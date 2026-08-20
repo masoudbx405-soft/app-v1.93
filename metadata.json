@@ -1,0 +1,6 @@
+{
+  "name": "قالیشویی صبا (پیک)",
+  "description": "اپلیکیشن رانندگان و سفیران قالیشویی هوشمند صبا جهت مدیریت ماموریت‌ها، ثبت فرش، صدور فاکتور و اتصال به چاپگر حرارتی و وب پنل متمرکز",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
