@@ -72,6 +72,7 @@ fun MainDriverScreen(viewModel: DriverViewModel) {
     val backupInfo by viewModel.backupInfo.collectAsState()
     val isBgServiceRunning by viewModel.isBackgroundServiceRunning.collectAsState()
     val bgLastSyncTime by viewModel.backgroundLastSyncTime.collectAsState()
+    val tariffsResult by viewModel.tariffsState.collectAsState()
 
     var showPrinterDialog by remember { mutableStateOf(false) }
     var showSyncQueueDialog by remember { mutableStateOf(false) }
@@ -553,6 +554,8 @@ fun MainDriverScreen(viewModel: DriverViewModel) {
                         connectionTestResult = connectionTestResult,
                         onUpdateServerUrl = { viewModel.updateServerUrl(it) },
                         onTestConnection = { viewModel.testServerConnection(it) },
+                        tariffSyncResult = tariffsResult,
+                        onRefreshTariffs = { viewModel.refreshTariffs() },
                         backupInfo = backupInfo,
                         onBackupDatabase = { viewModel.backupDatabase() },
                         onRestoreDatabase = { viewModel.restoreDatabase() },
@@ -561,6 +564,8 @@ fun MainDriverScreen(viewModel: DriverViewModel) {
                     99 -> CarpetRegistrationScreen(
                         orderWithItems = selectedOrder,
                         isPrinting = isPrinting,
+                        tariffSyncResult = tariffsResult,
+                        onRefreshTariffs = { viewModel.refreshTariffs() },
                         onBack = { viewModel.setActiveTab(1) },
                         onAddCarpetItem = { type, len, wid, price, servs, defs, notes, tag ->
                             selectedOrder?.let {

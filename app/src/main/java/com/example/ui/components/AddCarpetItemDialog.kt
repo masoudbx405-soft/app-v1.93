@@ -4,7 +4,6 @@ import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -25,22 +24,26 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
+import com.example.data.model.CarpetTariffItem
+import com.example.data.model.ServiceTariffItem
+import com.example.data.model.TariffSyncResult
+import com.example.ui.theme.*
 import com.example.utils.FarsiUtils
-import com.example.ui.theme.CleanPurpleAccent
-import com.example.ui.theme.CleanPurpleContainer
-import com.example.ui.theme.CleanBluePrimary
-import com.example.ui.theme.CleanTealAccent
 
+/**
+ * دیالوگ ثبت اقلام فاکتور فرش هماهنگ با نرخ‌نامه وب‌پنل و سرور Supabase
+ */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun AddCarpetItemDialog(
     orderId: String,
+    tariffSyncResult: TariffSyncResult = TariffSyncResult.createDefault(),
+    onRefreshTariffs: () -> Unit = {},
     onDismiss: () -> Unit,
     onConfirm: (
         carpetType: String,
@@ -53,6 +56,24 @@ fun AddCarpetItemDialog(
         barcodeTag: String
     ) -> Unit
 ) {
+    val carpetTariffs = if (tariffSyncResult.carpetTariffs.isNotEmpty()) {
+        tariffSyncResult.carpetTariffs
+    } else {
+        TariffSyncResult.DEFAULT_CARPET_TARIFFS
+    }
+
+    val serviceTariffs = if (tariffSyncResult.serviceTariffs.isNotEmpty()) {
+        tariffSyncResult.serviceTariffs
+    } else {
+        TariffSyncResult.DEFAULT_SERVICE_TARIFFS
+    }
+
+    val defectTariffs = if (tariffSyncResult.defectTariffs.isNotEmpty()) {
+        tariffSyncResult.defectTariffs
+    } else {
+        TariffSyncResult.DEFAULT_DEFECT_TARIFFS
+    }
+
     // Step 1: Pre-printed Stapled Barcode Tag
     var barcodeTagText by remember {
         mutableStateOf("ST-${orderId.takeLast(4)}-${(10..99).random()}")
@@ -69,42 +90,24 @@ fun AddCarpetItemDialog(
         )
     }
 
-    val carpetTypes = listOf(
-        "ماشینی ۶ متری (۲×۳)",
-        "ماشینی ۹ متری (۲٫۵×۳٫۵)",
-        "ماشینی ۱۲ متری (۳×۴)",
-        "دستبافت نائین",
-        "دستبافت ابریشم",
-        "گلیم / گبه / جاجیم",
-        "موکت / سجاده / مدرن",
-        "سایر ابعاد (سفارشی)"
-    )
-    var selectedType by remember { mutableStateOf(carpetTypes[0]) }
+    // Selected Carpet Tariff
+    var selectedTariffItem by remember { mutableStateOf(carpetTariffs[0]) }
+    var selectedType by remember { mutableStateOf(carpetTariffs[0].title) }
     var typeDropdownExpanded by remember { mutableStateOf(false) }
 
-    var lengthText by remember { mutableStateOf("3.0") }
-    var widthText by remember { mutableStateOf("2.0") }
-    var unitPriceText by remember { mutableStateOf("100000") }
+    var lengthText by remember { mutableStateOf(selectedTariffItem.defaultLength.toString()) }
+    var widthText by remember { mutableStateOf(selectedTariffItem.defaultWidth.toString()) }
+    var unitPriceText by remember { mutableStateOf(selectedTariffItem.unitPricePerMeter.toString()) }
 
-    val availableServices = listOf(
-        "شستشوی ویژه (اعلا)",
-        "ابریشم‌شویی",
-        "رفوگری و ریشه‌زنی",
-        "شیرازه‌دوزی",
-        "لکه‌بری تخصصی",
-        "ضدالعفونی و اتو"
-    )
-    val selectedServices = remember { mutableStateListOf("شستشوی ویژه (اعلا)") }
+    // Selected Services with calculated service fee
+    val selectedServices = remember {
+        mutableStateListOf<ServiceTariffItem>().apply {
+            if (serviceTariffs.isNotEmpty()) add(serviceTariffs[0])
+        }
+    }
     var servicesDropdownExpanded by remember { mutableStateOf(false) }
 
-    val availableDefects = listOf(
-        "بدون عیب اولیه",
-        "سوختگی جزئی",
-        "پوسیدگی حاشیه",
-        "پارگی / شکافتگی",
-        "بیدزدگی",
-        "تغییر رنگ / لکه شدید"
-    )
+    // Defects
     val selectedDefects = remember { mutableStateListOf("بدون عیب اولیه") }
     var defectsDropdownExpanded by remember { mutableStateOf(false) }
 
@@ -114,14 +117,24 @@ fun AddCarpetItemDialog(
     val width = widthText.toDoubleOrNull() ?: 0.0
     val area = length * width
     val unitPrice = unitPriceText.toLongOrNull() ?: 0L
-    val totalPrice = (area * unitPrice).toLong()
+    val baseWashPrice = (area * unitPrice).toLong()
+
+    // Additional Services Total
+    val servicesTotalFee = selectedServices.sumOf { srv ->
+        if (srv.isPercentage && srv.percentage > 0) {
+            (baseWashPrice * (srv.percentage / 100.0)).toLong()
+        } else {
+            srv.price
+        }
+    }
+    val totalPrice = baseWashPrice + servicesTotalFee
 
     AlertDialog(
         onDismissRequest = onDismiss,
         modifier = Modifier
             .fillMaxWidth()
             .padding(8.dp),
-        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+        properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
         Surface(
             shape = RoundedCornerShape(24.dp),
@@ -144,21 +157,21 @@ fun AddCarpetItemDialog(
                         Surface(
                             shape = CircleShape,
                             color = CleanPurpleContainer,
-                            modifier = Modifier.size(38.dp)
+                            modifier = Modifier.size(40.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
                                     Icons.Default.AddShoppingCart,
                                     contentDescription = null,
                                     tint = CleanPurpleAccent,
-                                    modifier = Modifier.size(20.dp)
+                                    modifier = Modifier.size(22.dp)
                                 )
                             }
                         }
                         Spacer(modifier = Modifier.width(10.dp))
                         Column {
                             Text(
-                                text = "ثبت اقلام فرش",
+                                text = "ثبت اقلام فاکتور فرش",
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 16.sp,
                                 color = MaterialTheme.colorScheme.onSurface
@@ -185,13 +198,72 @@ fun AddCarpetItemDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
-                // 1. Stapled Barcode Card (Compact & Modern)
+                // Rate Sheet Status Banner (Supabase Synchronized)
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (tariffSyncResult.isLiveFromSupabase) CleanTealContainer.copy(alpha = 0.6f) else CleanPurpleContainer.copy(alpha = 0.5f),
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        if (tariffSyncResult.isLiveFromSupabase) CleanTealAccent.copy(alpha = 0.4f) else CleanPurpleAccent.copy(alpha = 0.3f)
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                if (tariffSyncResult.isLiveFromSupabase) Icons.Default.CloudDone else Icons.Default.PriceCheck,
+                                contentDescription = null,
+                                tint = if (tariffSyncResult.isLiveFromSupabase) CleanTealAccent else CleanPurpleAccent,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Column {
+                                Text(
+                                    text = if (tariffSyncResult.isLiveFromSupabase) "نرخ‌نامه هماهنگ با پنل وب و Supabase" else "نرخ‌نامه مصوب قالیشویی صبا",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (tariffSyncResult.isLiveFromSupabase) CleanTealAccent else CleanPurpleAccent
+                                )
+                                Text(
+                                    text = "${carpetTariffs.size} نوع فرش و ${serviceTariffs.size} خدمت فعال در تعرفه",
+                                    fontSize = 9.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        IconButton(
+                            onClick = onRefreshTariffs,
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Sync,
+                                contentDescription = "بروزرسانی نرخ‌نامه",
+                                tint = CleanPurpleAccent,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // 1. Stapled Barcode Card
                 Surface(
                     shape = RoundedCornerShape(16.dp),
-                    color = CleanPurpleContainer.copy(alpha = 0.45f),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, CleanPurpleAccent.copy(alpha = 0.35f)),
+                    color = CleanPurpleContainer.copy(alpha = 0.35f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, CleanPurpleAccent.copy(alpha = 0.3f)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(
@@ -213,7 +285,7 @@ fun AddCarpetItemDialog(
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = "اسکن بارکد منگنه‌شده فرش:",
+                                    text = "شناسه / بارکد تگ منگنه فرش:",
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 12.sp,
                                     color = CleanPurpleAccent
@@ -242,8 +314,8 @@ fun AddCarpetItemDialog(
                             OutlinedTextField(
                                 value = barcodeTagText,
                                 onValueChange = { barcodeTagText = it.uppercase() },
-                                label = { Text("شناسه / کد فرش", fontSize = 11.sp) },
-                                placeholder = { Text("اسکن یا ورود دستی...", fontSize = 11.sp) },
+                                label = { Text("کد بارکد تگ", fontSize = 11.sp) },
+                                placeholder = { Text("ST-...", fontSize = 11.sp) },
                                 singleLine = true,
                                 leadingIcon = {
                                     IconButton(onClick = { showStapleScanner = true }) {
@@ -271,7 +343,6 @@ fun AddCarpetItemDialog(
                                 modifier = Modifier.weight(1f)
                             )
 
-                            // Primary Action: Camera Scan Barcode
                             Button(
                                 onClick = { showStapleScanner = true },
                                 shape = RoundedCornerShape(12.dp),
@@ -281,7 +352,7 @@ fun AddCarpetItemDialog(
                             ) {
                                 Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("اسکن بارکد", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text("اسکن دوربین", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -289,9 +360,9 @@ fun AddCarpetItemDialog(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // 2. Carpet Type Selection (Dropdown Menu)
+                // 2. Carpet Type Selection (From Supabase Tariff List)
                 Text(
-                    text = "۱. انتخاب نوع فرش:",
+                    text = "۱. انتخاب نوع فرش از نرخ‌نامه رسمی:",
                     fontWeight = FontWeight.Bold,
                     fontSize = 13.sp,
                     color = CleanPurpleAccent
@@ -307,7 +378,7 @@ fun AddCarpetItemDialog(
                         value = selectedType,
                         onValueChange = {},
                         readOnly = true,
-                        label = { Text("نوع و دسته فرش") },
+                        label = { Text("نوع و تعرفه فرش") },
                         leadingIcon = {
                             Icon(Icons.Default.Layers, contentDescription = null, tint = CleanPurpleAccent)
                         },
@@ -324,34 +395,71 @@ fun AddCarpetItemDialog(
                         expanded = typeDropdownExpanded,
                         onDismissRequest = { typeDropdownExpanded = false }
                     ) {
-                        carpetTypes.forEach { typeOption ->
+                        carpetTariffs.forEach { tariffItem ->
                             DropdownMenuItem(
-                                text = { Text(typeOption, fontSize = 13.sp) },
+                                text = {
+                                    Column {
+                                        Text(tariffItem.title, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                        Text(
+                                            "${FarsiUtils.formatPrice(tariffItem.unitPricePerMeter)} تومان / ${tariffItem.unit} | دسته: ${tariffItem.category}",
+                                            fontSize = 10.sp,
+                                            color = CleanPurpleAccent
+                                        )
+                                    }
+                                },
                                 leadingIcon = {
                                     Icon(
                                         Icons.Default.Check,
                                         contentDescription = null,
-                                        tint = if (selectedType == typeOption) CleanPurpleAccent else Color.Transparent,
+                                        tint = if (selectedType == tariffItem.title) CleanPurpleAccent else Color.Transparent,
                                         modifier = Modifier.size(16.dp)
                                     )
                                 },
                                 onClick = {
-                                    selectedType = typeOption
+                                    selectedTariffItem = tariffItem
+                                    selectedType = tariffItem.title
+                                    unitPriceText = tariffItem.unitPricePerMeter.toString()
+                                    lengthText = tariffItem.defaultLength.toString()
+                                    widthText = tariffItem.defaultWidth.toString()
                                     typeDropdownExpanded = false
-                                    when {
-                                        typeOption.contains("۱۲") -> { lengthText = "4.0"; widthText = "3.0" }
-                                        typeOption.contains("۹") -> { lengthText = "3.5"; widthText = "2.5" }
-                                        typeOption.contains("۶") -> { lengthText = "3.0"; widthText = "2.0" }
-                                    }
                                 }
                             )
                         }
                     }
                 }
 
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Quick Size Preset Buttons
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    AssistChip(
+                        onClick = { lengthText = "4.0"; widthText = "3.0" },
+                        label = { Text("۱۲ متری (۳×۴)", fontSize = 10.sp) },
+                        modifier = Modifier.weight(1f)
+                    )
+                    AssistChip(
+                        onClick = { lengthText = "3.5"; widthText = "2.5" },
+                        label = { Text("۹ متری (۲٫۵×۳٫۵)", fontSize = 10.sp) },
+                        modifier = Modifier.weight(1f)
+                    )
+                    AssistChip(
+                        onClick = { lengthText = "3.0"; widthText = "2.0" },
+                        label = { Text("۶ متری (۲×۳)", fontSize = 10.sp) },
+                        modifier = Modifier.weight(1f)
+                    )
+                    AssistChip(
+                        onClick = { lengthText = "2.25"; widthText = "1.5" },
+                        label = { Text("قالیچه (۱٫۵×۲٫۲۵)", fontSize = 10.sp) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // 3. Dimensions & Price Calculation Card
+                // 3. Dimensions & Unit Price
                 Text(
                     text = "۲. ابعاد و نرخ شستشو:",
                     fontWeight = FontWeight.Bold,
@@ -392,72 +500,48 @@ fun AddCarpetItemDialog(
                 OutlinedTextField(
                     value = unitPriceText,
                     onValueChange = { unitPriceText = it },
-                    label = { Text("نرخ شستشو (تومان هر متر مربع)") },
+                    label = { Text("نرخ شستشو (تومان هر متر مربع / تخته)") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     leadingIcon = { Icon(Icons.Default.AttachMoney, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                    trailingIcon = {
+                        if (unitPrice != selectedTariffItem.unitPricePerMeter) {
+                            TextButton(onClick = { unitPriceText = selectedTariffItem.unitPricePerMeter.toString() }) {
+                                Text("نرخ مصوب", fontSize = 10.sp, color = CleanPurpleAccent)
+                            }
+                        }
+                    },
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
                 )
 
-                Spacer(modifier = Modifier.height(10.dp))
-
-                // Live Summary Area & Price Badge
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = CleanPurpleContainer.copy(alpha = 0.6f),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, CleanPurpleAccent.copy(alpha = 0.3f)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.AspectRatio, contentDescription = null, tint = CleanPurpleAccent, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Column {
-                                Text("مساحت کل:", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text(
-                                    FarsiUtils.formatArea(area),
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 13.sp,
-                                    color = CleanPurpleAccent
-                                )
-                            }
-                        }
-
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Payments, contentDescription = null, tint = CleanPurpleAccent, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Column(horizontalAlignment = Alignment.End) {
-                                Text("مبلغ کل این فرش:", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text(
-                                    FarsiUtils.formatPrice(totalPrice),
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 14.sp,
-                                    color = CleanPurpleAccent
-                                )
-                            }
-                        }
-                    }
-                }
-
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // 4. Requested Services (Dropdown Menu)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.CleanHands, contentDescription = null, tint = CleanPurpleAccent, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "۳. انتخاب خدمات درخواستی:",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp,
-                        color = CleanPurpleAccent
-                    )
+                // 4. Requested Services (From Supabase Tariff List)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.CleanHands, contentDescription = null, tint = CleanPurpleAccent, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "۳. خدمات درخواستی و تکمیلی (نرخ‌نامه):",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                            color = CleanPurpleAccent
+                        )
+                    }
+
+                    if (selectedServices.isNotEmpty()) {
+                        Text(
+                            text = "+ ${FarsiUtils.formatPrice(servicesTotalFee)} تومان",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = CleanPurpleAccent
+                        )
+                    }
                 }
                 Spacer(modifier = Modifier.height(6.dp))
 
@@ -467,7 +551,7 @@ fun AddCarpetItemDialog(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     OutlinedTextField(
-                        value = if (selectedServices.isEmpty()) "هیچ خدماتی انتخاب نشده" else selectedServices.joinToString("، "),
+                        value = if (selectedServices.isEmpty()) "هیچ خدماتی انتخاب نشده" else selectedServices.joinToString("، ") { it.title },
                         onValueChange = {},
                         readOnly = true,
                         label = { Text("لیست خدمات درخواستی") },
@@ -487,10 +571,24 @@ fun AddCarpetItemDialog(
                         expanded = servicesDropdownExpanded,
                         onDismissRequest = { servicesDropdownExpanded = false }
                     ) {
-                        availableServices.forEach { service ->
-                            val isSelected = selectedServices.contains(service)
+                        serviceTariffs.forEach { serviceItem ->
+                            val isSelected = selectedServices.any { it.id == serviceItem.id }
                             DropdownMenuItem(
-                                text = { Text(service, fontSize = 13.sp) },
+                                text = {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(serviceItem.title, fontSize = 13.sp)
+                                        Text(
+                                            if (serviceItem.price > 0) "+ ${FarsiUtils.formatPrice(serviceItem.price)} تومان" else "رایگان",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = CleanPurpleAccent
+                                        )
+                                    }
+                                },
                                 leadingIcon = {
                                     Checkbox(
                                         checked = isSelected,
@@ -499,8 +597,11 @@ fun AddCarpetItemDialog(
                                     )
                                 },
                                 onClick = {
-                                    if (isSelected) selectedServices.remove(service)
-                                    else selectedServices.add(service)
+                                    if (isSelected) {
+                                        selectedServices.removeAll { it.id == serviceItem.id }
+                                    } else {
+                                        selectedServices.add(serviceItem)
+                                    }
                                 }
                             )
                         }
@@ -513,11 +614,16 @@ fun AddCarpetItemDialog(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        selectedServices.forEach { service ->
+                        selectedServices.forEach { serviceItem ->
                             FilterChip(
                                 selected = true,
-                                onClick = { selectedServices.remove(service) },
-                                label = { Text(service, fontSize = 11.sp) },
+                                onClick = { selectedServices.remove(serviceItem) },
+                                label = {
+                                    Text(
+                                        "${serviceItem.title} (${FarsiUtils.formatPrice(serviceItem.price)} ت)",
+                                        fontSize = 11.sp
+                                    )
+                                },
                                 trailingIcon = {
                                     Icon(Icons.Default.Close, contentDescription = "حذف", modifier = Modifier.size(12.dp))
                                 },
@@ -532,7 +638,7 @@ fun AddCarpetItemDialog(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // 5. Initial Defects / Flaws (Dropdown Menu)
+                // 5. Initial Defects / Flaws (From Supabase Defect List)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.ReportProblem, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(6.dp))
@@ -571,7 +677,8 @@ fun AddCarpetItemDialog(
                         expanded = defectsDropdownExpanded,
                         onDismissRequest = { defectsDropdownExpanded = false }
                     ) {
-                        availableDefects.forEach { defect ->
+                        defectTariffs.forEach { defectItem ->
+                            val defect = defectItem.title
                             val isSelected = selectedDefects.contains(defect)
                             DropdownMenuItem(
                                 text = { Text(defect, fontSize = 13.sp) },
@@ -636,18 +743,105 @@ fun AddCarpetItemDialog(
                     maxLines = 2
                 )
 
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Live Summary Calculation Card (Breakdown)
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = CleanPurpleContainer.copy(alpha = 0.65f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, CleanPurpleAccent.copy(alpha = 0.4f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("مساحت کل:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                FarsiUtils.formatArea(area),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp,
+                                color = CleanPurpleAccent
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("مبلغ پایه شستشو:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                "${FarsiUtils.formatPrice(baseWashPrice)} تومان",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+
+                        if (servicesTotalFee > 0) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("هزینه خدمات اضافی:", fontSize = 12.sp, color = CleanPurpleAccent)
+                                Text(
+                                    "+ ${FarsiUtils.formatPrice(servicesTotalFee)} تومان",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = CleanPurpleAccent
+                                )
+                            }
+                        }
+
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 8.dp),
+                            color = CleanPurpleAccent.copy(alpha = 0.2f)
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "مبلغ نهایی این فرش:",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp,
+                                color = CleanPurpleAccent
+                            )
+                            Text(
+                                text = FarsiUtils.formatPrice(totalPrice),
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 16.sp,
+                                color = CleanPurpleAccent
+                            )
+                        }
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(18.dp))
 
                 // Submit Button
                 Button(
                     onClick = {
                         if (length > 0 && width > 0 && unitPrice >= 0 && barcodeTagText.isNotBlank()) {
+                            val serviceNames = selectedServices.map { it.title }
                             onConfirm(
                                 selectedType,
                                 length,
                                 width,
                                 unitPrice,
-                                selectedServices.toList(),
+                                serviceNames,
                                 selectedDefects.toList(),
                                 customNotes,
                                 barcodeTagText
@@ -659,7 +853,7 @@ fun AddCarpetItemDialog(
                     colors = ButtonDefaults.buttonColors(containerColor = CleanPurpleAccent),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(50.dp),
+                        .height(52.dp),
                     shape = RoundedCornerShape(14.dp)
                 ) {
                     Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(20.dp))
@@ -691,7 +885,6 @@ fun StapleTagScannerModal(
     }
 
     var manualCodeInput by remember { mutableStateOf("") }
-    var isFlashlightOn by remember { mutableStateOf(false) }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -737,7 +930,7 @@ fun StapleTagScannerModal(
                                 fontSize = 16.sp
                             )
                             Text(
-                                text = "بارکد چاپ‌شده روی تگ منگنه فرش را در کادر اسکن قرار دهید",
+                                text = "تگ الصاق‌شده به فرش را مقابل دوربین قرار دهید",
                                 color = CleanTealAccent,
                                 fontSize = 11.sp
                             )
@@ -749,76 +942,53 @@ fun StapleTagScannerModal(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(20.dp))
 
-                // Camera Frame
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(280.dp),
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF121820))
-                ) {
-                    Box(modifier = Modifier.fillMaxSize()) {
-                        if (hasCameraPermission) {
-                            RealCameraPreviewView(
-                                isFlashlightOn = isFlashlightOn,
-                                onBarcodeDetected = { scanned ->
-                                    if (scanned.isNotBlank()) {
-                                        onTagScanned(scanned)
-                                    }
-                                }
-                            )
-                        } else {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(16.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center
-                            ) {
-                                Icon(
-                                    Icons.Default.CameraAlt,
-                                    contentDescription = null,
-                                    tint = CleanTealAccent,
-                                    modifier = Modifier.size(48.dp)
-                                )
-                                Spacer(modifier = Modifier.height(10.dp))
-                                Text(
-                                    text = "جهت اسکن بارکد منگنه فرش، مجوز دوربین را فعال کنید",
-                                    color = Color.White,
-                                    fontSize = 12.sp,
-                                    textAlign = TextAlign.Center
-                                )
-                                Spacer(modifier = Modifier.height(12.dp))
-                                Button(
-                                    onClick = {
-                                        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = CleanPurpleAccent),
-                                    shape = RoundedCornerShape(12.dp)
-                                ) {
-                                    Icon(Icons.Default.Videocam, contentDescription = null, modifier = Modifier.size(18.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("فعالسازی دوربین", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                }
+                // Camera Scanner Viewport or Permission Request
+                if (hasCameraPermission) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(280.dp)
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(Color(0xFF1E1E2C)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        RealCameraPreviewView(
+                            isFlashlightOn = false,
+                            onBarcodeDetected = { code ->
+                                onTagScanned(code)
                             }
-                        }
+                        )
 
-                        // Flashlight Toggle
-                        if (hasCameraPermission) {
-                            IconButton(
-                                onClick = { isFlashlightOn = !isFlashlightOn },
-                                modifier = Modifier
-                                    .align(Alignment.TopEnd)
-                                    .padding(12.dp)
-                                    .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                        // Reticle Overlay
+                        Box(
+                            modifier = Modifier
+                                .size(200.dp, 120.dp)
+                                .border(2.dp, CleanTealAccent, RoundedCornerShape(12.dp))
+                        )
+                    }
+                } else {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 16.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF232332)),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(20.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Icon(Icons.Default.CameraAlt, contentDescription = null, tint = CleanPurpleAccent, modifier = Modifier.size(48.dp))
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Text("دسترسی به دوربین جهت اسکن بارکد تگ الزامی است", color = Color.White, fontSize = 13.sp)
+                            Spacer(modifier = Modifier.height(14.dp))
+                            Button(
+                                onClick = { cameraPermissionLauncher.launch(Manifest.permission.CAMERA) },
+                                colors = ButtonDefaults.buttonColors(containerColor = CleanPurpleAccent)
                             ) {
-                                Icon(
-                                    if (isFlashlightOn) Icons.Default.FlashOn else Icons.Default.FlashOff,
-                                    contentDescription = "چراغ‌قوه",
-                                    tint = if (isFlashlightOn) Color.Yellow else Color.White
-                                )
+                                Text("اعطای دسترسی دوربین")
                             }
                         }
                     }
@@ -826,81 +996,41 @@ fun StapleTagScannerModal(
 
                 Spacer(modifier = Modifier.height(20.dp))
 
-                // Manual Tag Input fallback
-                Card(
+                // Manual Entry Option
+                Text("یا ورود دستی شماره بارکد تگ:", color = Color.LightGray, fontSize = 12.sp)
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B))
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Column(modifier = Modifier.padding(14.dp)) {
-                        Text(
-                            text = "یا ورود دستی کد منگنه فرش:",
-                            color = Color.White,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            OutlinedTextField(
-                                value = manualCodeInput,
-                                onValueChange = { manualCodeInput = it.uppercase() },
-                                label = { Text("کد بارکد منگنه", color = Color.LightGray, fontSize = 11.sp) },
-                                placeholder = { Text("مثال: TAG-1042-38", color = Color.Gray, fontSize = 11.sp) },
-                                singleLine = true,
-                                shape = RoundedCornerShape(12.dp),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedTextColor = Color.White,
-                                    unfocusedTextColor = Color.White,
-                                    focusedBorderColor = CleanPurpleAccent,
-                                    unfocusedBorderColor = Color.Gray
-                                ),
-                                modifier = Modifier.weight(1f)
-                            )
-
-                            Button(
-                                onClick = {
-                                    if (manualCodeInput.isNotBlank()) {
-                                        onTagScanned(manualCodeInput.trim())
-                                    }
-                                },
-                                enabled = manualCodeInput.isNotBlank(),
-                                colors = ButtonDefaults.buttonColors(containerColor = CleanPurpleAccent),
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.height(52.dp)
-                            ) {
-                                Text("ثبت کد", fontWeight = FontWeight.Bold)
+                    OutlinedTextField(
+                        value = manualCodeInput,
+                        onValueChange = { manualCodeInput = it.uppercase() },
+                        placeholder = { Text("مثلاً ST-9081-45", color = Color.Gray, fontSize = 12.sp) },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedBorderColor = CleanPurpleAccent,
+                            unfocusedBorderColor = Color.Gray
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.weight(1f),
+                        singleLine = true
+                    )
+                    Button(
+                        onClick = {
+                            if (manualCodeInput.isNotBlank()) {
+                                onTagScanned(manualCodeInput.trim())
                             }
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        Text(
-                            text = "نمونه کدهای تست سریع:",
-                            color = Color.LightGray,
-                            fontSize = 11.sp
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            listOf("ST-1042-01", "TAG-9014", "TAG-5520").forEach { sample ->
-                                FilterChip(
-                                    selected = false,
-                                    onClick = { onTagScanned(sample) },
-                                    label = { Text(sample, fontSize = 11.sp, color = Color.White) },
-                                    colors = FilterChipDefaults.filterChipColors(containerColor = Color(0xFF334155))
-                                )
-                            }
-                        }
+                        },
+                        enabled = manualCodeInput.isNotBlank(),
+                        colors = ButtonDefaults.buttonColors(containerColor = CleanPurpleAccent),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("تایید")
                     }
                 }
             }
         }
     }
 }
-

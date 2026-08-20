@@ -278,6 +278,8 @@ class DriverViewModel(application: Application) : AndroidViewModel(application) 
     val availablePrinters: StateFlow<List<BluetoothPrinterDevice>> = PrinterManager.availablePrinters
     val isPrinting: StateFlow<Boolean> = PrinterManager.isPrinting
 
+    val tariffsState: StateFlow<com.example.data.model.TariffSyncResult> = repository.tariffsState
+
     private val _backupInfo = MutableStateFlow<BackupInfo?>(null)
     val backupInfo: StateFlow<BackupInfo?> = _backupInfo
 
@@ -421,6 +423,19 @@ class DriverViewModel(application: Application) : AndroidViewModel(application) 
         )
         viewModelScope.launch {
             repository.addCarpetItemToOrder(orderId, item)
+        }
+    }
+
+    fun refreshTariffs() {
+        viewModelScope.launch {
+            _isSyncing.value = true
+            val result = repository.fetchAndSyncTariffs()
+            _isSyncing.value = false
+            _syncToastMessage.value = if (result.isLiveFromSupabase) {
+                "نرخ‌نامه با موفقیت از پنل وب همگام‌سازی شد (${result.carpetTariffs.size} تعرفه فرش)"
+            } else {
+                "نرخ‌نامه مصوب قالیشویی صبا بارگذاری شد"
+            }
         }
     }
 

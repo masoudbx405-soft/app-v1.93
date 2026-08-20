@@ -16,8 +16,12 @@ import com.example.data.local.entities.SyncQueueEntity
 import com.example.data.local.model.OrderWithItems
 import com.example.data.remote.SupabaseSyncService
 import com.example.data.remote.supabase.toEntity
+import com.example.data.model.TariffSyncResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.withContext
 
@@ -39,6 +43,9 @@ class ZomorrodRepository(
     )
 
     val supabaseService = SupabaseSyncService()
+
+    private val _tariffsState = MutableStateFlow(TariffSyncResult.createDefault())
+    val tariffsState: StateFlow<TariffSyncResult> = _tariffsState.asStateFlow()
 
     val allOrders: Flow<List<OrderWithItems>> = orderDao.getAllOrdersWithItems()
     val allChatMessages: Flow<List<ChatMessageEntity>> = chatMessageDao.getAllMessages()
@@ -498,13 +505,18 @@ class ZomorrodRepository(
                 }
             } catch (_: Exception) {}
 
-            // 3. Fetch incoming chat / dispatcher messages from Supabase web panel with deduplication
+            // 3. Fetch latest tariffs & rates from Supabase web panel
+            try {
+                fetchAndSyncTariffs()
+            } catch (_: Exception) {}
+
+            // 4. Fetch incoming chat / dispatcher messages from Supabase web panel with deduplication
             try {
                 val remoteMessages = supabaseService.fetchChatMessages(driverId)
                 syncRemoteChatMessages(remoteMessages, onNewMessage)
             } catch (_: Exception) {}
 
-            // 4. Push local unsynced orders
+            // 5. Push local unsynced orders
             val unsynced = orderDao.getUnsyncedOrders()
             for (order in unsynced) {
                 supabaseService.pushOrderUpdate(order)
@@ -520,6 +532,16 @@ class ZomorrodRepository(
             true
         } catch (e: Exception) {
             false
+        }
+    }
+
+    suspend fun fetchAndSyncTariffs(): TariffSyncResult = withContext(Dispatchers.IO) {
+        try {
+            val result = supabaseService.fetchTariffs()
+            _tariffsState.value = result
+            result
+        } catch (e: Exception) {
+            _tariffsState.value
         }
     }
 

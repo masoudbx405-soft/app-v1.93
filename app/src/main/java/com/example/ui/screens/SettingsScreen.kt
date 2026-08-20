@@ -36,6 +36,8 @@ fun SettingsScreen(
     connectionTestResult: String? = null,
     onUpdateServerUrl: (String) -> Unit = {},
     onTestConnection: (String) -> Unit = {},
+    tariffSyncResult: com.example.data.model.TariffSyncResult = com.example.data.model.TariffSyncResult.createDefault(),
+    onRefreshTariffs: () -> Unit = {},
     backupInfo: com.example.utils.BackupInfo? = null,
     onBackupDatabase: () -> Unit = {},
     onRestoreDatabase: () -> Unit = {},
@@ -463,6 +465,81 @@ fun SettingsScreen(
                             )
                         )
                     }
+                }
+            }
+        }
+
+        // Supabase Web Panel Tariffs & Price List Management Card
+        SettingsSectionCard(
+            title = "مدیریت نرخ‌نامه خدمات و فرش (همگام با وب‌پنل)",
+            subtitle = "دریافت و اعمال تعرفه‌های رسمی قالیشویی صبا از Supabase",
+            icon = Icons.Default.PriceCheck,
+            iconContainerColor = CleanTealContainer,
+            iconTintColor = CleanTealAccent
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = if (tariffSyncResult.isLiveFromSupabase) CleanTealContainer.copy(alpha = 0.4f) else CleanPurpleContainer.copy(alpha = 0.35f),
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        if (tariffSyncResult.isLiveFromSupabase) CleanTealAccent.copy(alpha = 0.4f) else CleanPurpleAccent.copy(alpha = 0.3f)
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    if (tariffSyncResult.isLiveFromSupabase) Icons.Default.CloudDone else Icons.Default.Inventory2,
+                                    contentDescription = null,
+                                    tint = if (tariffSyncResult.isLiveFromSupabase) CleanTealAccent else CleanPurpleAccent,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = if (tariffSyncResult.isLiveFromSupabase) "متصل به نرخ‌نامه زنده سرور" else "نرخ‌نامه مصوب قالیشویی صبا",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (tariffSyncResult.isLiveFromSupabase) CleanTealAccent else CleanPurpleAccent
+                                )
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (tariffSyncResult.isLiveFromSupabase) CleanTealAccent else CleanPurpleAccent
+                            ) {
+                                Text(
+                                    text = "${tariffSyncResult.carpetTariffs.size} تعرفه فرش",
+                                    color = Color.White,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+
+                        Text(
+                            text = "${tariffSyncResult.serviceTariffs.size} خدمت تکمیلی و شستشوی تخصصی در نرخ‌نامه ثبت شده است.",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                Button(
+                    onClick = onRefreshTariffs,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = CleanTealAccent),
+                    modifier = Modifier.fillMaxWidth().height(44.dp)
+                ) {
+                    Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("بروزرسانی فوری نرخ‌نامه از پنل وب", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }

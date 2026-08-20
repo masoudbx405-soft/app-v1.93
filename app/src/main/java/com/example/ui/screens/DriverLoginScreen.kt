@@ -40,10 +40,21 @@ fun DriverLoginScreen(
     onResetOtp: () -> Unit,
     otpSent: Boolean,
     isLoading: Boolean,
-    errorMessage: String?
+    errorMessage: String?,
+    generatedOtpHint: String? = null
 ) {
     var phoneNumber by remember { mutableStateOf("") }
     var otpCode by remember { mutableStateOf("") }
+
+    // Auto-fill OTP if test code provided in hint
+    LaunchedEffect(otpSent, generatedOtpHint) {
+        if (otpSent && !generatedOtpHint.isNullOrBlank()) {
+            val digits = generatedOtpHint.filter { it.isDigit() }
+            if (digits.length in 4..6 && otpCode.isBlank()) {
+                otpCode = digits
+            }
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -77,13 +88,64 @@ fun DriverLoginScreen(
                         .clip(RoundedCornerShape(20.dp))
                 ) {
                     Image(
-                        painter = painterResource(id = R.drawable.img_zomorrod_auth_banner_1786387949616),
-                        contentDescription = "بنر کارخانه قالیشویی و خدمات فرش صبا",
+                        painter = painterResource(id = R.drawable.img_saba_auth_banner_1787262473410),
+                        contentDescription = "بنر قالیشویی صبا",
                         modifier = Modifier
                             .fillMaxWidth()
                             .aspectRatio(16f / 9f),
                         contentScale = ContentScale.Crop
                     )
+
+                    // Gradient overlay with Brand Title
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .background(
+                                Brush.verticalGradient(
+                                    colors = listOf(
+                                        Color.Transparent,
+                                        Color.Black.copy(alpha = 0.65f)
+                                    ),
+                                    startY = 100f
+                                )
+                            )
+                    )
+
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(16.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = CleanPurpleAccent
+                            ) {
+                                Text(
+                                    text = "صبا",
+                                    color = Color.White,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                )
+                            }
+                            Text(
+                                text = "قالیشویی تخصصی صبا",
+                                color = Color.White,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Text(
+                            text = "سامانه هوشمند مدیریت ناوگان و رانندگان",
+                            color = Color(0xFFE0E7FF),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
                 }
             }
 
@@ -252,8 +314,9 @@ fun DriverLoginScreen(
                     } else {
                         // Step 2: OTP Code Input
                         Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = CleanTealContainer,
+                            shape = RoundedCornerShape(14.dp),
+                            color = CleanTealContainer.copy(alpha = 0.7f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, CleanTealAccent.copy(alpha = 0.3f)),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Row(
@@ -261,21 +324,63 @@ fun DriverLoginScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = "کد تایید یکبارمصرف ارسال شد به:",
-                                        fontSize = 11.sp,
-                                        color = CleanTealAccent
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        Icons.Default.MarkEmailRead,
+                                        contentDescription = null,
+                                        tint = CleanTealAccent,
+                                        modifier = Modifier.size(22.dp)
                                     )
-                                    Text(
-                                        text = FarsiUtils.toFarsiDigits(phoneNumber),
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = CleanTealAccent
-                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Column {
+                                        Text(
+                                            text = "کد تایید یکبارمصرف ارسال شد به:",
+                                            fontSize = 11.sp,
+                                            color = CleanTealAccent
+                                        )
+                                        Text(
+                                            text = FarsiUtils.toFarsiDigits(phoneNumber),
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = CleanTealAccent
+                                        )
+                                    }
                                 }
-                                TextButton(onClick = { onResetOtp() }) {
-                                    Text("تغییر شماره", fontSize = 11.sp, color = CleanBluePrimary)
+                                TextButton(
+                                    onClick = { onResetOtp() },
+                                    colors = ButtonDefaults.textButtonColors(contentColor = CleanPurpleAccent)
+                                ) {
+                                    Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("تغییر شماره", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+
+                        if (!generatedOtpHint.isNullOrBlank()) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = CleanPurpleContainer.copy(alpha = 0.5f),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Default.Info,
+                                        contentDescription = null,
+                                        tint = CleanPurpleAccent,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = generatedOtpHint,
+                                        fontSize = 11.sp,
+                                        color = CleanPurpleAccent,
+                                        fontWeight = FontWeight.Medium
+                                    )
                                 }
                             }
                         }
@@ -285,15 +390,21 @@ fun DriverLoginScreen(
                         OutlinedTextField(
                             value = otpCode,
                             onValueChange = { if (it.length <= 6) otpCode = it },
-                            label = { Text("کد تایید یکبارمصرف پیامک‌شده", fontSize = 12.sp) },
-                            placeholder = { Text("کد ۵ رقمی پیامک‌شده را وارد کنید", fontSize = 11.sp, color = Color.Gray) },
+                            label = { Text("کد تایید پیامک‌شده (۵ رقم)", fontSize = 12.sp) },
+                            placeholder = { Text("مثال: ۱۲۳۴۵", fontSize = 12.sp, color = Color.Gray) },
                             singleLine = true,
+                            textStyle = androidx.compose.ui.text.TextStyle(
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.Center,
+                                letterSpacing = 6.sp
+                            ),
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             leadingIcon = {
                                 Icon(
-                                    Icons.Default.Lock,
+                                    Icons.Default.Pin,
                                     contentDescription = null,
-                                    tint = CleanBluePrimary
+                                    tint = CleanPurpleAccent
                                 )
                             },
                             trailingIcon = {
@@ -306,7 +417,7 @@ fun DriverLoginScreen(
                             shape = RoundedCornerShape(14.dp),
                             modifier = Modifier.fillMaxWidth(),
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = CleanBluePrimary,
+                                focusedBorderColor = CleanPurpleAccent,
                                 unfocusedBorderColor = Color.LightGray
                             )
                         )
@@ -318,9 +429,9 @@ fun DriverLoginScreen(
                             enabled = !isLoading && otpCode.isNotBlank(),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(50.dp),
+                                .height(52.dp),
                             shape = RoundedCornerShape(14.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = CleanBluePrimary)
+                            colors = ButtonDefaults.buttonColors(containerColor = CleanPurpleAccent)
                         ) {
                             if (isLoading) {
                                 CircularProgressIndicator(
@@ -331,25 +442,31 @@ fun DriverLoginScreen(
                                 Spacer(modifier = Modifier.width(10.dp))
                                 Text("در حال تایید ورود...", fontSize = 14.sp)
                             } else {
-                                Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(20.dp))
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = "تایید و ورود به اپ رانندگان",
+                                    text = "تایید و ورود به پنل رانندگان",
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(10.dp))
 
-                        TextButton(
-                            onClick = { onSendOtp(phoneNumber) },
-                            enabled = !isLoading
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("ارسال مجدد کد پیامکی", fontSize = 12.sp, color = CleanBluePrimary)
+                            TextButton(
+                                onClick = { onSendOtp(phoneNumber) },
+                                enabled = !isLoading
+                            ) {
+                                Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp), tint = CleanPurpleAccent)
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("ارسال مجدد کد پیامکی", fontSize = 12.sp, color = CleanPurpleAccent)
+                            }
                         }
                     }
                 }

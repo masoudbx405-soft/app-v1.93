@@ -21,12 +21,12 @@ import com.example.BuildConfig
  */
 object ZomorrodSupabaseConfig {
     // آدرس واقعی پروژه‌ی Supabase
-    private const val ACTIVE_SUPABASE_URL = "https://eofavazsqwqzrmjvknrw.supabase.co"
-    private const val ACTIVE_DRIVER_API_KEY = "kg0zE1kxIg_KjssvT7lHu0qIDoVLxBLS"
+    private const val ACTIVE_SUPABASE_URL = "https://vahlblfvacxvmmvaeusb.supabase.co"
+    private const val ACTIVE_DRIVER_API_KEY = "oVKBYHRpHalUpmlYUGXOU-yIAIqn4fYL"
 
     val DEFAULT_SUPABASE_URL: String = run {
         val buildUrl = try { BuildConfig.SUPABASE_URL } catch (_: Throwable) { "" }
-        if (buildUrl.isNotBlank() && !buildUrl.contains("oagrzbdjxhhkrqlfjqri")) {
+        if (buildUrl.isNotBlank() && !buildUrl.contains("oagrzbdjxhhkrqlfjqri") && !buildUrl.contains("eofavazsqwqzrmjvknrw")) {
             buildUrl.trim().removeSuffix("/")
         } else {
             ACTIVE_SUPABASE_URL
@@ -35,7 +35,7 @@ object ZomorrodSupabaseConfig {
 
     val DRIVER_API_KEY: String = run {
         val buildKey = try { BuildConfig.DRIVER_API_KEY } catch (_: Throwable) { "" }
-        if (buildKey.isNotBlank()) buildKey.trim() else ACTIVE_DRIVER_API_KEY
+        if (buildKey.isNotBlank() && buildKey != "kg0zE1kxIg_KjssvT7lHu0qIDoVLxBLS") buildKey.trim() else ACTIVE_DRIVER_API_KEY
     }
 
     // پایه‌ی آدرس Edge Functionها
@@ -46,6 +46,8 @@ object ZomorrodSupabaseConfig {
         val COLLECTION_ROUTE = "$FUNCTIONS_BASE_URL/driver-api/routes/collection"
         val DELIVERY_ROUTE = "$FUNCTIONS_BASE_URL/driver-api/routes/delivery"
         val HEALTH_CHECK = "$FUNCTIONS_BASE_URL/driver-api/health"
+        val TARIFFS = "$FUNCTIONS_BASE_URL/driver-api/tariffs"
+        val PRICING = "$FUNCTIONS_BASE_URL/driver-api/pricing"
         fun orderItems(orderId: String) = "$FUNCTIONS_BASE_URL/driver-api/orders/$orderId/items"
         fun orderStatus(orderId: String) = "$FUNCTIONS_BASE_URL/driver-api/orders/$orderId/status"
         fun returnToWarehouse(orderId: String) = "$FUNCTIONS_BASE_URL/driver-api/orders/$orderId/return-to-warehouse"

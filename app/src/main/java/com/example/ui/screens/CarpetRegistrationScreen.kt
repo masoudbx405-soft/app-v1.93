@@ -31,6 +31,8 @@ import com.example.ui.theme.CleanPurpleContainer
 fun CarpetRegistrationScreen(
     orderWithItems: OrderWithItems?,
     isPrinting: Boolean,
+    tariffSyncResult: com.example.data.model.TariffSyncResult = com.example.data.model.TariffSyncResult.createDefault(),
+    onRefreshTariffs: () -> Unit = {},
     onBack: () -> Unit = {},
     onAddCarpetItem: (
         carpetType: String,
@@ -62,6 +64,8 @@ fun CarpetRegistrationScreen(
     if (showAddDialog) {
         AddCarpetItemDialog(
             orderId = order.id,
+            tariffSyncResult = tariffSyncResult,
+            onRefreshTariffs = onRefreshTariffs,
             onDismiss = { showAddDialog = false },
             onConfirm = { type, len, wid, price, servs, defs, notes, tag ->
                 onAddCarpetItem(type, len, wid, price, servs, defs, notes, tag)
@@ -167,7 +171,53 @@ fun CarpetRegistrationScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // Tariff / Price List Sync Banner
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = if (tariffSyncResult.isLiveFromSupabase) com.example.ui.theme.CleanTealContainer.copy(alpha = 0.5f) else CleanPurpleContainer.copy(alpha = 0.4f),
+            border = androidx.compose.foundation.BorderStroke(
+                1.dp,
+                if (tariffSyncResult.isLiveFromSupabase) com.example.ui.theme.CleanTealAccent.copy(alpha = 0.3f) else CleanPurpleAccent.copy(alpha = 0.2f)
+            ),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        if (tariffSyncResult.isLiveFromSupabase) Icons.Default.CloudDone else Icons.Default.PriceCheck,
+                        contentDescription = null,
+                        tint = if (tariffSyncResult.isLiveFromSupabase) com.example.ui.theme.CleanTealAccent else CleanPurpleAccent,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (tariffSyncResult.isLiveFromSupabase) "نرخ‌نامه متصل به پنل وب Supabase (${tariffSyncResult.carpetTariffs.size} تعرفه)" else "نرخ‌نامه رسمی قالیشویی صبا",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (tariffSyncResult.isLiveFromSupabase) com.example.ui.theme.CleanTealAccent else CleanPurpleAccent
+                    )
+                }
+
+                TextButton(
+                    onClick = onRefreshTariffs,
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
+                ) {
+                    Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(14.dp), tint = CleanPurpleAccent)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("بروزرسانی نرخ‌نامه", fontSize = 10.sp, color = CleanPurpleAccent)
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
 
         // Action Row
         Row(
