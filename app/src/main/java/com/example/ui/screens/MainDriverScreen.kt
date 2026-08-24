@@ -67,6 +67,7 @@ fun MainDriverScreen(viewModel: DriverViewModel) {
     val isPrinting by viewModel.isPrinting.collectAsState()
 
     val serverUrl by viewModel.serverUrl.collectAsState()
+    val driverApiKey by viewModel.driverApiKey.collectAsState()
     val isTestingConnection by viewModel.isTestingConnection.collectAsState()
     val connectionTestResult by viewModel.connectionTestResult.collectAsState()
     val backupInfo by viewModel.backupInfo.collectAsState()
@@ -369,7 +370,13 @@ fun MainDriverScreen(viewModel: DriverViewModel) {
                 otpSent = otpSent,
                 isLoading = authLoading,
                 errorMessage = authError,
-                generatedOtpHint = generatedOtp
+                generatedOtpHint = generatedOtp,
+                serverUrl = serverUrl,
+                driverApiKey = driverApiKey,
+                isTestingConnection = isTestingConnection,
+                connectionTestResult = connectionTestResult,
+                onTestConnection = { url, key -> viewModel.testServerConnection(url, key) },
+                onSaveServerConfig = { url, key -> viewModel.updateServerConfig(url, key) }
             )
         } else {
             Scaffold(
@@ -663,10 +670,12 @@ fun MainDriverScreen(viewModel: DriverViewModel) {
                             onPrintTestReceipt = { viewModel.printTestReceipt() },
                             onSyncNow = { viewModel.syncWithWebPanel() },
                             savedServerUrl = serverUrl,
+                            savedApiKey = driverApiKey,
                             isTestingConnection = isTestingConnection,
                             connectionTestResult = connectionTestResult,
                             onUpdateServerUrl = { viewModel.updateServerUrl(it) },
-                            onTestConnection = { viewModel.testServerConnection(it) },
+                            onUpdateServerConfig = { url, key -> viewModel.updateServerConfig(url, key) },
+                            onTestConnection = { url, key -> viewModel.testServerConnection(url, key) },
                             tariffSyncResult = tariffsResult,
                             onRefreshTariffs = { viewModel.refreshTariffs() },
                             backupInfo = backupInfo,

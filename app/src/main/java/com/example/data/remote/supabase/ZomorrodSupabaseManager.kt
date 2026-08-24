@@ -54,12 +54,11 @@ class ZomorrodSupabaseManager(
         val builder = Request.Builder()
             .url(url)
             .addHeader("x-driver-api-key", driverApiKey)
+            .addHeader("x-api-key", driverApiKey)
             .addHeader("apikey", driverApiKey)
+            .addHeader("Authorization", "Bearer $driverApiKey")
             .addHeader("Content-Type", "application/json")
             .addHeader("Accept", "application/json")
-        if (driverApiKey.isNotBlank()) {
-            builder.addHeader("Authorization", "Bearer $driverApiKey")
-        }
         return builder
     }
 
@@ -608,81 +607,142 @@ class ZomorrodSupabaseManager(
     // ورود راننده با کد پیامکی (OTP) — از طریق Edge Function واقعی otp
     // ==========================================================================
 
-    /** درخواست ارسال کد. پیام قابل‌نمایش به کاربر را هم برمی‌گرداند. */
+    /** درخواست ارسال کد واقعی از طریق وب‌سرویس و پنل Supabase */
     suspend fun requestOtp(phone: String): Pair<Boolean, String> = withContext(Dispatchers.IO) {
-        try {
-            val payload = JSONObject().apply {
-                put("mobile", phone)
-                put("phone", phone)
-            }.toString()
-            val request = baseRequest("${functionsBase()}/otp/request")
-                .post(payload.toRequestBody(jsonMediaType))
-                .build()
-            client.newCall(request).execute().use { response ->
-                val body = response.body?.string() ?: "{}"
-                val json = try { JSONObject(body) } catch (_: Exception) { JSONObject() }
-                
-                // بررسی موفقیت‌آمیز بودن ارسال
-                val isSuccess = response.isSuccessful && (
-                    json.optBoolean("success", true) ||
-                    json.optBoolean("ok", true) ||
-                    json.optString("status", "success") == "success" ||
-                    json.has("message") ||
-                    json.has("code")
-                )
-                
-                val msg = json.optString("message", if (isSuccess) "کد تایید با موفقیت ارسال شد." else "خطا در ارسال کد تایید.")
-                val testCode = json.optString("code", json.optString("otp", ""))
-                val fullMsg = if (testCode.isNotBlank()) "$msg (کد تست: $testCode)" else msg
-                Pair(isSuccess, fullMsg)
+        val endpoints = listOf(
+            "${functionsBase()}/otp/request",
+            "${functionsBase()}/otp",
+            "${functionsBase()}/driver-api/otp/request",
+            "${functionsBase()}/driver-api/otp"
+        )
+
+        var lastErrorDetails = "پاسخی از سرور دریافت نشد."
+
+        for (endpoint in endpoints) {
+            try {
+                val payload = JSONObject().apply {
+                    put("phone", phone)
+                    put("mobile", phone)
+                    put("action", "request")
+                    put("type", "request")
+                }.toString()
+
+                val request = baseRequest(endpoint)
+                    .post(payload.toRequestBody(jsonMediaType))
+                    .build()
+
+                client.newCall(request).execute().use { response ->
+                    val rawBody = response.body?.string() ?: ""
+                    val json = try { JSONObject(rawBody) } catch (_: Exception) { JSONObject() }
+
+                    if (response.isSuccessful) {
+                        val isOk = json.optBoolean("success", true) &&
+                                json.optBoolean("ok", true) &&
+                                json.optString("status", "success") != "error"
+
+                        val serverMsg = json.optString("message",
+                            json.optString("msg",
+                                json.optString("detail", "کد تأیید ورود با موفقیت ارسال شد.")
+                            )
+                        )
+
+                        if (isOk) {
+                            return@withContext Pair(true, serverMsg)
+                        } else {
+                            val errReason = json.optString("error", json.optString("message", "خطا در درخواست کد"))
+                            return@withContext Pair(false, "سرور: $errReason")
+                        }
+                    } else if (response.code != 404) {
+                        // The endpoint exists on the server but rejected the request
+                        val extractedError = when {
+                            json.has("error") -> json.optString("error")
+                            json.has("message") -> json.optString("message")
+                            json.has("msg") -> json.optString("msg")
+                            json.has("detail") -> json.optString("detail")
+                            rawBody.isNotBlank() && rawBody.length < 200 -> rawBody
+                            else -> "پاسخ ناموفق سرور با کد ${response.code}"
+                        }
+                        return@withContext Pair(false, "خطای سرور (${response.code}): $extractedError")
+                    } else {
+                        lastErrorDetails = "مسیر $endpoint در سرور یافت نشد (HTTP 404)"
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("SupabaseManager", "Network call failed for $endpoint: ${e.message}", e)
+                lastErrorDetails = "خطای ارتباط شبکه: ${e.localizedMessage ?: e.javaClass.simpleName}"
             }
-        } catch (e: Exception) {
-            Log.w("SupabaseManager", "requestOtp network error: ${e.message}, falling back to SMS demo code")
-            val fallbackCode = "12345"
-            Pair(true, "کد تایید ارسال شد (کد آزمایشی: $fallbackCode)")
         }
+
+        Pair(false, lastErrorDetails)
     }
 
-    /** تایید کد. در صورت موفقیت، شناسه‌ی واقعی راننده (driverId) را برمی‌گرداند. */
-    suspend fun verifyOtp(phone: String, code: String): String? = withContext(Dispatchers.IO) {
-        try {
-            val payload = JSONObject().apply {
-                put("mobile", phone)
-                put("phone", phone)
-                put("code", code)
-                put("otp", code)
-            }.toString()
-            val request = baseRequest("${functionsBase()}/otp/verify")
-                .post(payload.toRequestBody(jsonMediaType))
-                .build()
-            client.newCall(request).execute().use { response ->
-                val body = response.body?.string() ?: "{}"
-                val json = try { JSONObject(body) } catch (_: Exception) { JSONObject() }
-                val isSuccess = response.isSuccessful && (
-                    json.optBoolean("success", true) ||
-                    json.optBoolean("ok", true) ||
-                    json.optString("status", "success") == "success" ||
-                    json.has("driverId") ||
-                    json.has("driver") ||
-                    json.has("token")
-                )
-                if (isSuccess) {
-                    val driverId = json.optString("driverId", json.optString("driver_id", "DRV-101"))
-                    if (driverId.isNotBlank()) driverId else "DRV-101"
-                } else if (response.code in 200..299) {
-                    "DRV-101"
-                } else {
-                    null
+    /** تایید کد پیامکی واقعی از طریق پنل و برگرداندن شناسه‌ی راننده */
+    suspend fun verifyOtp(phone: String, code: String): Pair<Boolean, String> = withContext(Dispatchers.IO) {
+        val endpoints = listOf(
+            "${functionsBase()}/otp/verify",
+            "${functionsBase()}/otp",
+            "${functionsBase()}/driver-api/otp/verify",
+            "${functionsBase()}/driver-api/otp"
+        )
+
+        var lastErrorDetails = "پاسخی از سرور دریافت نشد."
+
+        for (endpoint in endpoints) {
+            try {
+                val payload = JSONObject().apply {
+                    put("phone", phone)
+                    put("mobile", phone)
+                    put("code", code)
+                    put("otp", code)
+                    put("action", "verify")
+                    put("type", "verify")
+                }.toString()
+
+                val request = baseRequest(endpoint)
+                    .post(payload.toRequestBody(jsonMediaType))
+                    .build()
+
+                client.newCall(request).execute().use { response ->
+                    val rawBody = response.body?.string() ?: ""
+                    val json = try { JSONObject(rawBody) } catch (_: Exception) { JSONObject() }
+
+                    if (response.isSuccessful) {
+                        val isOk = json.optBoolean("success", true) &&
+                                json.optBoolean("ok", true) &&
+                                json.optString("status", "success") != "error"
+
+                        if (isOk) {
+                            val driverId = json.optString("driverId",
+                                json.optString("driver_id",
+                                    json.optString("id", "DRV-101")
+                                )
+                            )
+                            return@withContext Pair(true, driverId.ifBlank { "DRV-101" })
+                        } else {
+                            val errReason = json.optString("error", json.optString("message", "کد واردشده نادرست یا منقضی است."))
+                            return@withContext Pair(false, "سرور: $errReason")
+                        }
+                    } else if (response.code != 404) {
+                        val extractedError = when {
+                            json.has("error") -> json.optString("error")
+                            json.has("message") -> json.optString("message")
+                            json.has("msg") -> json.optString("msg")
+                            json.has("detail") -> json.optString("detail")
+                            rawBody.isNotBlank() && rawBody.length < 200 -> rawBody
+                            else -> "پاسخ ناموفق سرور با کد ${response.code}"
+                        }
+                        return@withContext Pair(false, "خطای سرور (${response.code}): $extractedError")
+                    } else {
+                        lastErrorDetails = "مسیر $endpoint در سرور یافت نشد (HTTP 404)"
+                    }
                 }
-            }
-        } catch (e: Exception) {
-            Log.e("SupabaseManager", "Error verifying OTP: ${e.message}")
-            if (code == "12345" || code.length >= 4) {
-                "DRV-101"
-            } else {
-                null
+            } catch (e: Exception) {
+                Log.e("SupabaseManager", "Network call failed for verify $endpoint: ${e.message}", e)
+                lastErrorDetails = "خطای ارتباط شبکه: ${e.localizedMessage ?: e.javaClass.simpleName}"
             }
         }
+
+        Pair(false, lastErrorDetails)
     }
 
     // ==========================================================================

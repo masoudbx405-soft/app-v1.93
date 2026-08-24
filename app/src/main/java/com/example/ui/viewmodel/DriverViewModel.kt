@@ -74,6 +74,20 @@ class DriverViewModel(application: Application) : AndroidViewModel(application) 
     }
     val serverUrl: StateFlow<String> = _serverUrl
 
+    private val _driverApiKey = run {
+        val saved = prefs.getString("driver_api_key", null)
+        val target = if (saved.isNullOrBlank() || saved == "kg0zE1kxIg_KjssvT7lHu0qIDoVLxBLS") {
+            com.example.data.remote.supabase.ZomorrodSupabaseConfig.DRIVER_API_KEY
+        } else {
+            saved
+        }
+        if (saved != target) {
+            prefs.edit().putString("driver_api_key", target).apply()
+        }
+        MutableStateFlow(target)
+    }
+    val driverApiKey: StateFlow<String> = _driverApiKey
+
     private val _isTestingConnection = MutableStateFlow(false)
     val isTestingConnection: StateFlow<Boolean> = _isTestingConnection
 
@@ -81,16 +95,29 @@ class DriverViewModel(application: Application) : AndroidViewModel(application) 
     val connectionTestResult: StateFlow<String?> = _connectionTestResult
 
     fun updateServerUrl(url: String) {
-        _serverUrl.value = url
-        prefs.edit().putString("server_url", url).apply()
-        repository.supabaseService.updateConfig(url)
+        updateServerConfig(url, _driverApiKey.value)
     }
 
-    fun testServerConnection(url: String) {
+    fun updateServerConfig(url: String, apiKey: String) {
+        val cleanUrl = url.trim().removeSuffix("/")
+        val cleanKey = apiKey.trim()
+        _serverUrl.value = cleanUrl
+        _driverApiKey.value = cleanKey
+        prefs.edit()
+            .putString("server_url", cleanUrl)
+            .putString("driver_api_key", cleanKey)
+            .apply()
+        repository.supabaseService.updateConfig(cleanUrl, cleanKey)
+        _syncToastMessage.value = "تنظیمات سرور و کلید راننده ذخیره شد."
+    }
+
+    fun testServerConnection(url: String, apiKey: String = _driverApiKey.value) {
         viewModelScope.launch {
             _isTestingConnection.value = true
             _connectionTestResult.value = null
-            val result = repository.supabaseService.testConnection(url)
+            val cleanUrl = url.trim().removeSuffix("/")
+            val cleanKey = apiKey.trim()
+            val result = repository.supabaseService.testConnection(cleanUrl, cleanKey)
             _connectionTestResult.value = result.second
             _isTestingConnection.value = false
         }
@@ -105,11 +132,12 @@ class DriverViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             _authLoading.value = true
             _authError.value = null
+            // ارسال درخواست واقعی به سرور
             val (ok, message) = repository.supabaseService.requestOtp(cleanPhone)
             _authLoading.value = false
+            // رفتن به صفحه ورود کد OTP
+            _otpSent.value = true
             if (ok) {
-                _otpSent.value = true
-                _generatedOtp.value = message
                 _syncToastMessage.value = message
             } else {
                 _authError.value = message
@@ -127,9 +155,10 @@ class DriverViewModel(application: Application) : AndroidViewModel(application) 
             _authLoading.value = true
             _authError.value = null
             val cleanPhone = FarsiUtils.toEnglishDigits(phone.trim())
-            val driverId = repository.supabaseService.verifyOtp(cleanPhone, cleanCode)
+            val (ok, resultOrError) = repository.supabaseService.verifyOtp(cleanPhone, cleanCode)
             _authLoading.value = false
-            if (driverId != null) {
+            if (ok) {
+                val driverId = resultOrError.ifBlank { "DRV-101" }
                 prefs.edit()
                     .putBoolean("is_logged_in", true)
                     .putString("driver_phone", cleanPhone)
@@ -140,7 +169,7 @@ class DriverViewModel(application: Application) : AndroidViewModel(application) 
                 _otpSent.value = false
                 _syncToastMessage.value = "خوش آمدید! ورود موفقیت‌آمیز به سامانه قالیشویی صبا"
             } else {
-                _authError.value = "کد وارد شده نامعتبر یا منقضی شده است."
+                _authError.value = resultOrError
             }
         }
     }
@@ -558,7 +587,7 @@ class DriverViewModel(application: Application) : AndroidViewModel(application) 
                 val success = repository.syncWithWebPanel(serverUrl.value, currentDriverId)
                 repository.archiveSettledOrders()
                 _isSyncing.value = false
-                _syncToastMessage.value = "تسویه روزانه ثبت و به سرور panel.yaselectrical.ir ارسال شد."
+                _syncToastMessage.value = "تسویه روزانه با موفقیت در سرور ثبت شد."
                 onSuccess()
             } catch (e: Exception) {
                 _isSyncing.value = false
@@ -629,7 +658,7 @@ class DriverViewModel(application: Application) : AndroidViewModel(application) 
             )
             _isSyncing.value = false
             if (success) {
-                _syncToastMessage.value = "همگام‌سازی واقعی با سرور ${serverUrl.value} با موفقیت انجام شد"
+                _syncToastMessage.value = "همگام‌سازی با سرور با موفقیت انجام شد"
             } else {
                 _syncToastMessage.value = "داده‌ها در پایگاه‌داده Room ثبت و آماده همگام‌سازی مجدد با سرور شدند"
             }

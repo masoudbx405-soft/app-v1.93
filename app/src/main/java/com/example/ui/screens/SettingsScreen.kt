@@ -32,11 +32,13 @@ fun SettingsScreen(
     onOpenPrinterDialog: () -> Unit,
     onPrintTestReceipt: () -> Unit = {},
     onSyncNow: () -> Unit,
-    savedServerUrl: String = "https://panel.yaselectrical.ir",
+    savedServerUrl: String = com.example.data.remote.supabase.ZomorrodSupabaseConfig.DEFAULT_SUPABASE_URL,
+    savedApiKey: String = com.example.data.remote.supabase.ZomorrodSupabaseConfig.DRIVER_API_KEY,
     isTestingConnection: Boolean = false,
     connectionTestResult: String? = null,
     onUpdateServerUrl: (String) -> Unit = {},
-    onTestConnection: (String) -> Unit = {},
+    onUpdateServerConfig: (String, String) -> Unit = { _, _ -> },
+    onTestConnection: (String, String) -> Unit = { _, _ -> },
     tariffSyncResult: com.example.data.model.TariffSyncResult = com.example.data.model.TariffSyncResult.createDefault(),
     onRefreshTariffs: () -> Unit = {},
     backupInfo: com.example.utils.BackupInfo? = null,
@@ -47,6 +49,7 @@ fun SettingsScreen(
     val context = LocalContext.current
 
     var serverUrl by remember(savedServerUrl) { mutableStateOf(savedServerUrl) }
+    var apiKey by remember(savedApiKey) { mutableStateOf(savedApiKey) }
     var autoSyncEnabled by remember { mutableStateOf(true) }
     var autoPrintReceipt by remember { mutableStateOf(true) }
 
@@ -60,8 +63,8 @@ fun SettingsScreen(
     ) {
         // Server Connection Card
         SettingsSectionCard(
-            title = "ارتباط با سرور مرکزی قالیشویی",
-            subtitle = "مدیریت ارتباط بی‌درنگ با وب‌سرویس و دریافت فاکتورها",
+            title = "ارتباط با سرور Supabase قالیشویی صبا",
+            subtitle = "مدیریت آدرس پروژه، کلید راننده و همگام‌سازی بی‌درنگ فاکتورها",
             icon = Icons.Default.CloudSync
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -69,9 +72,10 @@ fun SettingsScreen(
                     value = serverUrl,
                     onValueChange = {
                         serverUrl = it
-                        onUpdateServerUrl(it)
+                        onUpdateServerConfig(it, apiKey)
                     },
-                    label = { Text("آدرس وب‌سرویس قالیشویی صبا", fontSize = 11.sp) },
+                    label = { Text("آدرس Supabase URL", fontSize = 11.sp) },
+                    placeholder = { Text("https://xyz.supabase.co") },
                     singleLine = true,
                     leadingIcon = { Icon(Icons.Default.Language, contentDescription = null, tint = CleanGreenPrimary, modifier = Modifier.size(18.dp)) },
                     shape = RoundedCornerShape(14.dp),
@@ -82,9 +86,27 @@ fun SettingsScreen(
                     modifier = Modifier.fillMaxWidth()
                 )
 
+                OutlinedTextField(
+                    value = apiKey,
+                    onValueChange = {
+                        apiKey = it
+                        onUpdateServerConfig(serverUrl, it)
+                    },
+                    label = { Text("کلید ارتباطی راننده (Driver API Key)", fontSize = 11.sp) },
+                    placeholder = { Text("oVKBYHRpHalUpmlYUGXOU...") },
+                    singleLine = true,
+                    leadingIcon = { Icon(Icons.Default.VpnKey, contentDescription = null, tint = CleanGreenPrimary, modifier = Modifier.size(18.dp)) },
+                    shape = RoundedCornerShape(14.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = CleanGreenPrimary,
+                        focusedLabelColor = CleanGreenPrimary
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
                 // Connection Test Button
                 Button(
-                    onClick = { onTestConnection(serverUrl) },
+                    onClick = { onTestConnection(serverUrl, apiKey) },
                     enabled = !isTestingConnection,
                     shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = CleanGreenPrimary),
@@ -99,7 +121,7 @@ fun SettingsScreen(
                     } else {
                         Icon(Icons.Default.NetworkCheck, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("تست اتصال به وب‌سرور", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text("تست ارتباط با Supabase", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     }
                 }
 

@@ -28,8 +28,8 @@ class SupabaseSyncService(
 
     fun getBaseUrl(): String = baseUrl
 
-    suspend fun testConnection(targetUrl: String = baseUrl): Pair<Boolean, String> {
-        supabaseManager.updateCredentials(targetUrl, apiKey)
+    suspend fun testConnection(targetUrl: String = baseUrl, targetKey: String = apiKey): Pair<Boolean, String> {
+        supabaseManager.updateCredentials(targetUrl, targetKey)
         return supabaseManager.checkHealth()
     }
 
@@ -37,7 +37,7 @@ class SupabaseSyncService(
         return supabaseManager.requestOtp(phone)
     }
 
-    suspend fun verifyOtp(phone: String, code: String): String? {
+    suspend fun verifyOtp(phone: String, code: String): Pair<Boolean, String> {
         return supabaseManager.verifyOtp(phone, code)
     }
 

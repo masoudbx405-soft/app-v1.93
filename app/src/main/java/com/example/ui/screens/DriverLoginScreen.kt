@@ -5,6 +5,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -20,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -28,6 +30,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.R
+import com.example.ui.components.SupabaseConfigDialog
 import com.example.ui.theme.*
 import com.example.utils.FarsiUtils
 
@@ -39,19 +42,32 @@ fun DriverLoginScreen(
     otpSent: Boolean,
     isLoading: Boolean,
     errorMessage: String?,
-    generatedOtpHint: String? = null
+    generatedOtpHint: String? = null,
+    serverUrl: String = "",
+    driverApiKey: String = "",
+    isTestingConnection: Boolean = false,
+    connectionTestResult: String? = null,
+    onTestConnection: (url: String, apiKey: String) -> Unit = { _, _ -> },
+    onSaveServerConfig: (url: String, apiKey: String) -> Unit = { _, _ -> }
 ) {
     var phoneNumber by remember { mutableStateOf("") }
     var otpCode by remember { mutableStateOf("") }
+    var showConfigDialog by remember { mutableStateOf(false) }
 
-    // Auto-fill OTP if test code provided in hint
-    LaunchedEffect(otpSent, generatedOtpHint) {
-        if (otpSent && !generatedOtpHint.isNullOrBlank()) {
-            val digits = generatedOtpHint.filter { it.isDigit() }
-            if (digits.length in 4..6 && otpCode.isBlank()) {
-                otpCode = digits
+    // Supabase Manual Configuration Modal triggered by long-pressing on the banner
+    if (showConfigDialog) {
+        SupabaseConfigDialog(
+            initialUrl = serverUrl,
+            initialApiKey = driverApiKey,
+            isTesting = isTestingConnection,
+            testResult = connectionTestResult,
+            onDismiss = { showConfigDialog = false },
+            onTestConnection = onTestConnection,
+            onSaveConfig = { url, key ->
+                onSaveServerConfig(url, key)
+                showConfigDialog = false
             }
-        }
+        )
     }
 
     Box(
@@ -70,13 +86,22 @@ fun DriverLoginScreen(
         ) {
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Main Brand Luxury Banner Image
+            // Main Brand Luxury Banner Image with Long-Press Action for Supabase & API Key Config
             Surface(
                 shape = RoundedCornerShape(24.dp),
                 shadowElevation = 6.dp,
                 color = Color.White,
                 border = androidx.compose.foundation.BorderStroke(1.dp, CleanLightOutline),
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(24.dp))
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onLongPress = {
+                                showConfigDialog = true
+                            }
+                        )
+                    }
             ) {
                 Box(
                     modifier = Modifier
@@ -100,7 +125,7 @@ fun DriverLoginScreen(
                                 Brush.verticalGradient(
                                     colors = listOf(
                                         Color.Transparent,
-                                        Color.Black.copy(alpha = 0.7f)
+                                        Color.Black.copy(alpha = 0.75f)
                                     ),
                                     startY = 80f
                                 )
@@ -230,22 +255,6 @@ fun DriverLoginScreen(
                             ),
                             modifier = Modifier.fillMaxWidth()
                         )
-
-                        if (!generatedOtpHint.isNullOrBlank()) {
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = CleanGreenPrimaryLight
-                            ) {
-                                Text(
-                                    text = "کد تست تستی ورود: $generatedOtpHint",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = CleanGreenPrimaryDark,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
-                                )
-                            }
-                        }
 
                         Spacer(modifier = Modifier.height(20.dp))
 
