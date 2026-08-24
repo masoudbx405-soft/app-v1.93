@@ -1,9 +1,12 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -20,12 +23,9 @@ import com.example.data.local.entities.CarpetItemEntity
 import com.example.data.local.model.OrderWithItems
 import com.example.ui.components.AddCarpetItemDialog
 import com.example.ui.components.BarcodeView
-import com.example.ui.components.QrCodeView
 import com.example.ui.components.ReceiptPreviewDialog
+import com.example.ui.theme.*
 import com.example.utils.FarsiUtils
-
-import com.example.ui.theme.CleanPurpleAccent
-import com.example.ui.theme.CleanPurpleContainer
 
 @Composable
 fun CarpetRegistrationScreen(
@@ -49,14 +49,43 @@ fun CarpetRegistrationScreen(
     onProceedToWorkshop: () -> Unit
 ) {
     if (orderWithItems == null) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("لطفاً ابتدا یک سفارش را از لیست ماموریت‌ها انتخاب کنید.")
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(CleanLightBackground),
+            contentAlignment = Alignment.Center
+        ) {
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = Color.White,
+                border = BorderStroke(1.dp, CleanLightOutline),
+                modifier = Modifier.padding(24.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(Icons.Default.Info, contentDescription = null, tint = CleanGreenPrimary, modifier = Modifier.size(40.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text("لطفاً ابتدا یک سفارش را از لیست جمع‌آوری انتخاب کنید.", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Button(
+                        onClick = onBack,
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = CleanGreenPrimary)
+                    ) {
+                        Text("بازگشت به لیست جمع‌آوری")
+                    }
+                }
+            }
         }
         return
     }
 
     val order = orderWithItems.order
     val items = orderWithItems.items
+    val totalArea = items.sumOf { it.areaSqMeter }
+    val totalEstimatedPrice = items.sumOf { it.totalPrice }
 
     var showAddDialog by remember { mutableStateOf(false) }
     var showReceiptPreview by remember { mutableStateOf(false) }
@@ -87,429 +116,442 @@ fun CarpetRegistrationScreen(
         )
     }
 
-    Column(
+    LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .padding(12.dp)
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+        contentPadding = PaddingValues(top = 12.dp, bottom = 28.dp)
     ) {
-        // Customer Header Card
-        Card(
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = CleanPurpleContainer.copy(alpha = 0.6f)),
-            border = androidx.compose.foundation.BorderStroke(1.dp, CleanPurpleAccent.copy(alpha = 0.3f)),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(modifier = Modifier.padding(14.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = onBack) {
-                            Icon(
-                                Icons.Default.ArrowForward,
-                                contentDescription = "بازگشت",
-                                tint = CleanPurpleAccent
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(2.dp))
-                        Column {
-                            Text(
-                                text = "ثبت فاکتور اولیه و اسکن بارکد فرش",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = CleanPurpleAccent
-                            )
-                            Text(
-                                text = "کد سفارش: ${FarsiUtils.toFarsiDigits(order.id)}",
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-
-                    Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = CleanPurpleAccent
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                        ) {
-                            Icon(Icons.Default.ReceiptLong, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "${items.size} فرش",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Person, contentDescription = null, tint = CleanPurpleAccent, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "${order.customerName} (${FarsiUtils.toFarsiDigits(order.customerPhone)})",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.LocationOn, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(text = order.address, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        // Tariff / Price List Sync Banner
-        Surface(
-            shape = RoundedCornerShape(12.dp),
-            color = if (tariffSyncResult.isLiveFromSupabase) com.example.ui.theme.CleanTealContainer.copy(alpha = 0.5f) else CleanPurpleContainer.copy(alpha = 0.4f),
-            border = androidx.compose.foundation.BorderStroke(
-                1.dp,
-                if (tariffSyncResult.isLiveFromSupabase) com.example.ui.theme.CleanTealAccent.copy(alpha = 0.3f) else CleanPurpleAccent.copy(alpha = 0.2f)
-            ),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+        // 1. Customer & Order Header Card
+        item {
+            Surface(
+                shape = RoundedCornerShape(22.dp),
+                color = Color.White,
+                shadowElevation = 2.dp,
+                border = BorderStroke(1.dp, CleanLightOutline),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        if (tariffSyncResult.isLiveFromSupabase) Icons.Default.CloudDone else Icons.Default.PriceCheck,
-                        contentDescription = null,
-                        tint = if (tariffSyncResult.isLiveFromSupabase) com.example.ui.theme.CleanTealAccent else CleanPurpleAccent,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = if (tariffSyncResult.isLiveFromSupabase) "نرخ‌نامه متصل به پنل وب Supabase (${tariffSyncResult.carpetTariffs.size} تعرفه)" else "نرخ‌نامه رسمی قالیشویی صبا",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = if (tariffSyncResult.isLiveFromSupabase) com.example.ui.theme.CleanTealAccent else CleanPurpleAccent
-                    )
-                }
-
-                TextButton(
-                    onClick = onRefreshTariffs,
-                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
-                ) {
-                    Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(14.dp), tint = CleanPurpleAccent)
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("بروزرسانی نرخ‌نامه", fontSize = 10.sp, color = CleanPurpleAccent)
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        // Action Row
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.FormatListBulleted, contentDescription = null, tint = CleanPurpleAccent, modifier = Modifier.size(20.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = "لیست فرش‌های فاکتور:",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp
-                )
-            }
-
-            Button(
-                onClick = { showAddDialog = true },
-                colors = ButtonDefaults.buttonColors(containerColor = CleanPurpleAccent),
-                shape = RoundedCornerShape(12.dp),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-            ) {
-                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("افزودن فرش جدید", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-            }
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Items List
-        if (items.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        Icons.Default.LayersClear,
-                        contentDescription = null,
-                        modifier = Modifier.size(52.dp),
-                        tint = CleanPurpleAccent.copy(alpha = 0.4f)
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text("هنوز هیچ فرشی برای این فاکتور ثبت نشده است.", fontSize = 13.sp)
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text("جهت ثبت فرش، دکمه «افزودن فرش جدید» را بزنید.", fontSize = 11.sp, color = MaterialTheme.colorScheme.outline)
-                }
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(items, key = { it.id }) { carpetItem ->
-                    CarpetItemCard(
-                        item = carpetItem,
-                        onDelete = { onDeleteCarpetItem(carpetItem.id) }
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        // Pro-Forma Invoice Totals & QR Tracking Code Box
-        Card(
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = CleanPurpleContainer.copy(alpha = 0.5f)),
-            border = androidx.compose.foundation.BorderStroke(1.dp, CleanPurpleAccent.copy(alpha = 0.3f)),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(modifier = Modifier.padding(12.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Straighten, contentDescription = null, tint = CleanPurpleAccent, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("مجموع متراژ:", fontSize = 12.sp)
-                    }
-                    Text(
-                        FarsiUtils.formatArea(items.sumOf { it.areaSqMeter }),
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp,
-                        color = CleanPurpleAccent
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Payments, contentDescription = null, tint = CleanPurpleAccent, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("مبلغ کل پیش‌فاکتور:", fontSize = 12.sp)
-                    }
-                    Text(
-                        FarsiUtils.formatPrice(order.totalAmount),
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp,
-                        color = CleanPurpleAccent
-                    )
-                }
-
-                if (items.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    HorizontalDivider(color = CleanPurpleAccent.copy(alpha = 0.2f))
-                    Spacer(modifier = Modifier.height(8.dp))
-
+                Column(modifier = Modifier.padding(16.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.QrCode, contentDescription = null, tint = CleanPurpleAccent, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("QR کد پیگیری فاکتور مشتری", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = CleanPurpleAccent)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = CleanGreenPrimaryLight,
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable { onBack() }
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        Icons.Default.ArrowForward,
+                                        contentDescription = "بازگشت",
+                                        tint = CleanGreenPrimary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
                             }
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                "چاپ همزمان در ۲ نسخه (نسخه مشتری و نسخه راننده)",
-                                fontSize = 10.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "صدور پیش‌فاکتور و ثبت اقلام",
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = CleanLightOnSurface
+                                )
+                                Text(
+                                    text = "مشتری: ${order.customerName} • ${FarsiUtils.toFarsiDigits(order.customerPhone)}",
+                                    fontSize = 11.sp,
+                                    color = CleanLightOnSurfaceMuted
+                                )
+                            }
                         }
 
                         Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = Color.White,
-                            border = androidx.compose.foundation.BorderStroke(1.dp, CleanPurpleAccent.copy(alpha = 0.3f))
+                            shape = RoundedCornerShape(10.dp),
+                            color = CleanGreenPrimary
                         ) {
-                            Box(modifier = Modifier.padding(4.dp)) {
-                                QrCodeView(code = "ORD-${order.id}", size = 52.dp)
-                            }
+                            Text(
+                                text = "فاکتور ${order.id}",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                            )
                         }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+                    HorizontalDivider(color = CleanLightOutline)
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Step indicator row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceAround,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        StepItem(number = "۱", title = "انتخاب مشتری", isDone = true, isActive = false)
+                        StepDivider(isDone = true)
+                        StepItem(number = "۲", title = "ثبت اقلام فرش", isDone = items.isNotEmpty(), isActive = items.isEmpty())
+                        StepDivider(isDone = items.isNotEmpty())
+                        StepItem(number = "۳", title = "چاپ پیش‌فاکتور", isDone = false, isActive = items.isNotEmpty())
                     }
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(10.dp))
-
-        // Bottom Action Buttons
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            OutlinedButton(
-                onClick = { showReceiptPreview = true },
-                enabled = items.isNotEmpty(),
-                modifier = Modifier
-                    .weight(1.2f)
-                    .height(48.dp),
-                shape = RoundedCornerShape(12.dp)
+        // 2. Financial & Area Calculation Summary Cards
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Icon(Icons.Default.Print, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("چاپ فاکتور (۲ نسخه)", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                // Total Area Card
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color.White,
+                    shadowElevation = 2.dp,
+                    border = BorderStroke(1.dp, CleanLightOutline),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "${FarsiUtils.toFarsiDigits(String.format("%.1f", totalArea))}",
+                                fontSize = 22.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = CleanGreenPrimary
+                            )
+                            Icon(Icons.Default.AspectRatio, contentDescription = null, tint = CleanGreenPrimary, modifier = Modifier.size(20.dp))
+                        }
+                        Text("مساحت کل (مترمربع)", fontSize = 11.sp, color = CleanLightOnSurfaceMuted, fontWeight = FontWeight.Medium)
+                    }
+                }
+
+                // Total Estimated Amount Card
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color.White,
+                    shadowElevation = 2.dp,
+                    border = BorderStroke(1.dp, CleanLightOutline),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = FarsiUtils.formatPriceShort(totalEstimatedPrice),
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = CleanGreenPrimary
+                            )
+                            Icon(Icons.Default.Payments, contentDescription = null, tint = CleanGreenPrimary, modifier = Modifier.size(20.dp))
+                        }
+                        Text("مبلغ برآوردی (تومان)", fontSize = 11.sp, color = CleanLightOnSurfaceMuted, fontWeight = FontWeight.Medium)
+                    }
+                }
             }
+        }
 
-            Button(
-                onClick = onProceedToWorkshop,
-                enabled = items.isNotEmpty(),
-                colors = ButtonDefaults.buttonColors(containerColor = CleanPurpleAccent),
-                modifier = Modifier
-                    .weight(1.3f)
-                    .height(48.dp),
-                shape = RoundedCornerShape(12.dp)
+        // 3. Section Title & Add Item CTA
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Default.Warehouse, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("انتقال به انبار", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    text = "لیست فرش‌های ثبت‌شده (${FarsiUtils.toFarsiDigits(items.size.toString())} تخته):",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = CleanLightOnSurface
+                )
+
+                Button(
+                    onClick = { showAddDialog = true },
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = CleanGreenPrimary),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("افزودن تخته فرش جدید", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+
+        // 4. Carpet Items List
+        if (items.isEmpty()) {
+            item {
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color.White,
+                    border = BorderStroke(1.dp, CleanLightOutline),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(28.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            Icons.Default.Layers,
+                            contentDescription = null,
+                            tint = CleanLightOnSurfaceMuted,
+                            modifier = Modifier.size(44.dp)
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = "هنوز هیچ تخته فرشی برای این فاکتور ثبت نشده است.",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = CleanLightOnSurface
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "با دکمه بالا اقلام دریافتی را همراه با ابعاد و بارکد منگنه ثبت نمایید.",
+                            fontSize = 11.sp,
+                            color = CleanLightOnSurfaceMuted
+                        )
+                    }
+                }
+            }
+        } else {
+            items(items, key = { it.id }) { item ->
+                CarpetItemUnifiedCard(
+                    item = item,
+                    onDelete = { onDeleteCarpetItem(item.id) }
+                )
+            }
+        }
+
+        // 5. Final Action Buttons: Print Pre-Invoice & Finalize
+        if (items.isNotEmpty()) {
+            item {
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Finalize & proceed to workshop button
+                    Button(
+                        onClick = onProceedToWorkshop,
+                        shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = CleanGreenPrimary),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(52.dp)
+                    ) {
+                        Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("تأیید نهایی و تحویل به انبار", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    // Print receipt button
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = CleanGreenPrimaryLight,
+                        modifier = Modifier
+                            .size(52.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .clickable { showReceiptPreview = true }
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                Icons.Default.Print,
+                                contentDescription = "چاپ پیش‌فاکتور",
+                                tint = CleanGreenPrimary,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-fun CarpetItemCard(
+private fun CarpetItemUnifiedCard(
     item: CarpetItemEntity,
     onDelete: () -> Unit
 ) {
-    val displayTag = if (item.barcodeTag.isNotBlank()) item.barcodeTag else "ST-${item.orderId.takeLast(4)}-${item.id}"
+    val area = item.lengthMeter * item.widthMeter
 
-    Card(
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = Color.White,
+        shadowElevation = 2.dp,
+        border = BorderStroke(1.dp, CleanLightOutline),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            // Header Row: Type + Tag and Delete button
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(10.dp)
-                            .clip(MaterialTheme.shapes.small)
-                            .background(MaterialTheme.colorScheme.primary)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(text = item.carpetType, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                }
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    // Stapled Barcode Badge
                     Surface(
                         shape = RoundedCornerShape(8.dp),
-                        color = CleanPurpleContainer,
-                        border = androidx.compose.foundation.BorderStroke(1.dp, CleanPurpleAccent.copy(alpha = 0.5f))
+                        color = CleanGreenPrimary
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        Text(
+                            text = item.carpetType,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                    if (item.barcodeTag.isNotBlank()) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = CleanGreenPrimaryLight
                         ) {
-                            Icon(
-                                Icons.Default.QrCode,
-                                contentDescription = null,
-                                modifier = Modifier.size(14.dp),
-                                tint = CleanPurpleAccent
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = "کد فرش: $displayTag",
+                                text = "بارکد: ${item.barcodeTag}",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = CleanPurpleAccent
+                                color = CleanGreenPrimary,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                             )
                         }
                     }
+                }
 
-                    Spacer(modifier = Modifier.width(4.dp))
-                    IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
-                        Icon(Icons.Default.Delete, contentDescription = "حذف", tint = MaterialTheme.colorScheme.error)
+                IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Default.DeleteOutline, contentDescription = "حذف قلم", tint = CleanRedError, modifier = Modifier.size(20.dp))
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Dimensions and Calculations
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "ابعاد: ${FarsiUtils.toFarsiDigits(item.lengthMeter.toString())} × ${FarsiUtils.toFarsiDigits(item.widthMeter.toString())} متر (${FarsiUtils.toFarsiDigits(String.format("%.1f", area))} م²)",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = CleanLightOnSurface
+                )
+
+                Text(
+                    text = "${FarsiUtils.formatPrice(item.totalPrice)}",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = CleanGreenPrimary
+                )
+            }
+
+            // Services or Defects if present
+            if (item.requestedServicesJson.isNotBlank() || item.defectsJson.isNotBlank()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = CleanLightBackground,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(8.dp)) {
+                        if (item.requestedServicesJson.isNotBlank()) {
+                            Text("خدمات درخواستی: ${item.requestedServicesJson}", fontSize = 11.sp, color = CleanGreenPrimary, fontWeight = FontWeight.SemiBold)
+                        }
+                        if (item.defectsJson.isNotBlank()) {
+                            Text("ایرادات اولیه فرش: ${item.defectsJson}", fontSize = 11.sp, color = CleanWarningText)
+                        }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(6.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = "ابعاد: ${item.lengthMeter} × ${item.widthMeter} متر (${FarsiUtils.formatArea(item.areaSqMeter)})",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    text = FarsiUtils.formatPrice(item.totalPrice),
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontSize = 14.sp
-                )
+            // Barcode preview
+            if (item.barcodeTag.isNotBlank()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    BarcodeView(code = item.barcodeTag, modifier = Modifier.fillMaxWidth().height(40.dp))
+                }
             }
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            Text(text = "خدمات: ${item.requestedServicesJson}", fontSize = 12.sp)
-
-            if (item.defectsJson.isNotBlank() && item.defectsJson != "بدون عیب اولیه") {
-                Text(
-                    text = "عیوب اولیه: ${item.defectsJson}",
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.error,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Barcode tag preview for physical stapled carpet label
-            BarcodeView(
-                code = displayTag,
-                height = 36.dp,
-                modifier = Modifier.fillMaxWidth()
-            )
         }
     }
+}
+
+@Composable
+private fun StepItem(
+    number: String,
+    title: String,
+    isDone: Boolean,
+    isActive: Boolean
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            modifier = Modifier
+                .size(24.dp)
+                .clip(CircleShape)
+                .background(
+                    when {
+                        isDone -> CleanGreenPrimary
+                        isActive -> CleanOrangeAccent
+                        else -> CleanLightOutline
+                    }
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            if (isDone) {
+                Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+            } else {
+                Text(
+                    text = FarsiUtils.toFarsiDigits(number),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isActive) Color.White else CleanLightOnSurfaceMuted
+                )
+            }
+        }
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+            text = title,
+            fontSize = 11.sp,
+            fontWeight = if (isActive || isDone) FontWeight.Bold else FontWeight.Normal,
+            color = if (isActive || isDone) CleanLightOnSurface else CleanLightOnSurfaceMuted
+        )
+    }
+}
+
+@Composable
+private fun StepDivider(isDone: Boolean) {
+    Box(
+        modifier = Modifier
+            .width(20.dp)
+            .height(2.dp)
+            .background(if (isDone) CleanGreenPrimary else CleanLightOutline)
+    )
 }

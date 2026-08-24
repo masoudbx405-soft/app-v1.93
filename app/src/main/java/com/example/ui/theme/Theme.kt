@@ -14,16 +14,16 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 
 private val DarkColorScheme = darkColorScheme(
-    primary = CleanBluePrimaryLight,
-    onPrimary = CleanBlueOnContainer,
-    primaryContainer = CleanBluePrimary,
-    onPrimaryContainer = CleanBlueContainer,
-    secondary = CleanTealAccent,
+    primary = CleanGreenPrimaryLight,
+    onPrimary = CleanGreenPrimaryDark,
+    primaryContainer = CleanGreenPrimary,
+    onPrimaryContainer = CleanGreenPrimaryLight,
+    secondary = CleanGreenAccent,
     onSecondary = CleanLightSurface,
-    tertiary = CleanPurpleAccent,
+    tertiary = CleanOrangeAccent,
     onTertiary = CleanLightSurface,
-    tertiaryContainer = CleanPurpleContainer,
-    onTertiaryContainer = CleanPurpleAccent,
+    tertiaryContainer = CleanWarningBg,
+    onTertiaryContainer = CleanWarningText,
     background = CleanDarkBackground,
     onBackground = CleanDarkOnSurface,
     surface = CleanDarkSurface,
@@ -35,16 +35,16 @@ private val DarkColorScheme = darkColorScheme(
 )
 
 private val LightColorScheme = lightColorScheme(
-    primary = CleanBluePrimary,
+    primary = CleanGreenPrimary,
     onPrimary = CleanBlueOnPrimary,
-    primaryContainer = CleanBlueContainer,
-    onPrimaryContainer = CleanBlueOnContainer,
-    secondary = CleanTealAccent,
+    primaryContainer = CleanGreenPrimaryLight,
+    onPrimaryContainer = CleanGreenPrimaryDark,
+    secondary = CleanGreenAccent,
     onSecondary = CleanLightSurface,
-    tertiary = CleanPurpleAccent,
+    tertiary = CleanOrangeAccent,
     onTertiary = CleanLightSurface,
-    tertiaryContainer = CleanPurpleContainer,
-    onTertiaryContainer = CleanPurpleAccent,
+    tertiaryContainer = CleanWarningBg,
+    onTertiaryContainer = CleanWarningText,
     background = CleanLightBackground,
     onBackground = CleanLightOnSurface,
     surface = CleanLightSurface,
@@ -65,7 +65,7 @@ fun ZomorrodDriverTheme(
 
     SideEffect {
         if (context is Activity) {
-            context.window.statusBarColor = colorScheme.primary.toArgb()
+            context.window.statusBarColor = CleanGreenPrimary.toArgb()
         }
     }
 

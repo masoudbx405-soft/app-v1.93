@@ -1,9 +1,9 @@
 package com.example.ui.screens
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.Canvas
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -17,13 +17,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -32,13 +27,12 @@ import com.example.data.local.model.OrderWithItems
 import com.example.data.model.ScanStage
 import com.example.ui.components.BarcodeScannerModal
 import com.example.ui.components.RealisticOrderMapPreview
+import com.example.ui.components.ReturnToCleanWarehouseDialog
 import com.example.ui.theme.*
 import com.example.utils.FarsiUtils
 import com.example.utils.NavigationUtils
 
-import com.example.ui.components.ReturnToCleanWarehouseDialog
-
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DeliveryRouteScreen(
     orders: List<OrderWithItems>,
@@ -48,7 +42,7 @@ fun DeliveryRouteScreen(
 ) {
     val context = LocalContext.current
 
-    // Filter orders ready for delivery (excluding settled, returned, or orders in collection/workshop stages)
+    // Filter orders ready for delivery
     val deliveryOrders = orders.filter {
         (it.order.status == "READY_FOR_DELIVERY" ||
                 (it.order.orderType == "DELIVERY" && it.order.status == "ASSIGNED")) &&
@@ -60,15 +54,17 @@ fun DeliveryRouteScreen(
                 it.order.status != "WASHING"
     }
 
-    // Selected order on map or from cards
+    val deliveredTodayCount = orders.count { it.order.status == "DELIVERED_SETTLED" }
+    val totalTodayInvoices = deliveryOrders.size + deliveredTodayCount
+
     var selectedOrderForMap by remember(deliveryOrders) {
         mutableStateOf<OrderWithItems?>(deliveryOrders.firstOrNull())
     }
 
-    var selectedFilter by remember { mutableStateOf("ALL") } // ALL, READY, WORKSHOP
+    var selectedFilter by remember { mutableStateOf("ALL") } // ALL, READY
     var searchQuery by remember { mutableStateOf("") }
+    var showFilterSheet by remember { mutableStateOf(false) }
     var showDeliverySearchScanner by remember { mutableStateOf(false) }
-    var scanNoticeMessage by remember { mutableStateOf<String?>(null) }
     var orderForCleanWarehouseReturn by remember { mutableStateOf<OrderWithItems?>(null) }
 
     if (showDeliverySearchScanner) {
@@ -87,27 +83,6 @@ fun DeliveryRouteScreen(
         )
     }
 
-    val activeNoticeMsg = scanNoticeMessage
-    if (activeNoticeMsg != null) {
-        AlertDialog(
-            onDismissRequest = { scanNoticeMessage = null },
-            confirmButton = {
-                TextButton(onClick = { scanNoticeMessage = null }) {
-                    Text("تأیید و بستن", fontWeight = FontWeight.Bold)
-                }
-            },
-            title = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Info, contentDescription = null, tint = CleanBluePrimary)
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("نتیجه اسکن بارکد فاکتور", fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                }
-            },
-            text = { Text(activeNoticeMsg, fontSize = 13.sp) },
-            shape = RoundedCornerShape(16.dp)
-        )
-    }
-
     val activeReturnOrder = orderForCleanWarehouseReturn
     if (activeReturnOrder != null) {
         ReturnToCleanWarehouseDialog(
@@ -122,11 +97,62 @@ fun DeliveryRouteScreen(
         )
     }
 
+    // Filter Bottom Sheet
+    if (showFilterSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showFilterSheet = false },
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            containerColor = Color.White
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("فیلتر فاکتورهای تحویل", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    IconButton(onClick = { showFilterSheet = false }) {
+                        Icon(Icons.Default.Close, contentDescription = "بستن")
+                    }
+                }
+                HorizontalDivider(color = CleanLightOutline)
+
+                FilterOptionRow(
+                    title = "همه فاکتورها",
+                    count = deliveryOrders.size,
+                    isSelected = selectedFilter == "ALL",
+                    onClick = {
+                        selectedFilter = "ALL"
+                        showFilterSheet = false
+                    }
+                )
+
+                FilterOptionRow(
+                    title = "فقط فاکتورهای آماده تحویل فوری",
+                    count = deliveryOrders.count { it.order.status == "READY_FOR_DELIVERY" },
+                    isSelected = selectedFilter == "READY",
+                    onClick = {
+                        selectedFilter = "READY"
+                        showFilterSheet = false
+                    }
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+            }
+        }
+    }
+
     val filteredOrders = deliveryOrders.filter { item ->
-        val matchesSearch = item.order.customerName.contains(searchQuery, true) ||
+        val matchesSearch = searchQuery.isBlank() ||
+                item.order.customerName.contains(searchQuery, true) ||
                 item.order.id.contains(searchQuery, true) ||
-                item.order.rackCode.contains(searchQuery, true) ||
-                item.items.any { it.barcodeTag.contains(searchQuery, true) }
+                item.order.address.contains(searchQuery, true) ||
+                item.order.customerPhone.contains(searchQuery)
 
         val matchesFilter = when (selectedFilter) {
             "READY" -> item.order.status == "READY_FOR_DELIVERY"
@@ -136,507 +162,726 @@ fun DeliveryRouteScreen(
         matchesSearch && matchesFilter
     }
 
-    val readyCount = deliveryOrders.count { it.order.status == "READY_FOR_DELIVERY" }
-
-    Column(
+    LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .padding(12.dp)
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+        contentPadding = PaddingValues(top = 12.dp, bottom = 24.dp)
     ) {
-        // 1. Delivery Mission Stats Overview Banner
-        Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
-            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 10.dp)
-        ) {
+        // 1. KPI Summary Cards Row (Matching Screenshot)
+        item {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Card 1: فاکتورهای امروز (Right Card in RTL)
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color.White,
+                    shadowElevation = 3.dp,
+                    border = BorderStroke(1.dp, CleanLightOutline),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = FarsiUtils.toFarsiDigits(totalTodayInvoices.toString()),
+                                fontSize = 24.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = CleanGreenPrimary
+                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "فاکتورهای امروز",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = CleanLightOnSurface
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .size(24.dp)
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(CleanGreenPrimaryLight),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        Icons.Default.Check,
+                                        contentDescription = null,
+                                        tint = CleanGreenPrimary,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                        }
+                        Text(
+                            text = "${FarsiUtils.toFarsiDigits(deliveredTodayCount.toString())} تحویل شده",
+                            fontSize = 11.sp,
+                            color = CleanLightOnSurfaceMuted,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+
+                // Card 2: در نوبت تحویل (Left Card in RTL)
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color.White,
+                    shadowElevation = 3.dp,
+                    border = BorderStroke(1.dp, CleanLightOutline),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = FarsiUtils.toFarsiDigits(deliveryOrders.size.toString()),
+                                fontSize = 24.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = CleanGreenPrimary
+                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "در نوبت تحویل",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = CleanLightOnSurface
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Icon(
+                                    Icons.Default.LocalShipping,
+                                    contentDescription = null,
+                                    tint = CleanGreenPrimary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                        Text(
+                            text = "${FarsiUtils.toFarsiDigits(deliveryOrders.size.toString())} باقیمانده",
+                            fontSize = 11.sp,
+                            color = CleanLightOnSurfaceMuted,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            }
+        }
+
+        // 2. Search & Filter Bar (Matching Screenshot)
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Default.LocalShipping,
-                        contentDescription = null,
-                        tint = CleanBluePrimary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "${FarsiUtils.toFarsiDigits(deliveryOrders.size.toString())} فاکتور در نوبت تحویل",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-
+                // Search Input Field
                 Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = CleanTealContainer
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color.White,
+                    border = BorderStroke(1.dp, CleanLightOutline),
+                    shadowElevation = 1.dp,
+                    modifier = Modifier.weight(1f)
                 ) {
-                    Text(
-                        text = "${FarsiUtils.toFarsiDigits(deliveryOrders.sumOf { it.items.size }.toString())} تخته فرش",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = CleanTealAccent,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                    )
-                }
-            }
-        }
-
-        // Search & Filter Header
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "فاکتورهای تحویل & بارگیری انبار:",
-                fontWeight = FontWeight.Bold,
-                fontSize = 13.sp,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-
-            // Quick Filter Chips
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                FilterChip(
-                    selected = selectedFilter == "ALL",
-                    onClick = { selectedFilter = "ALL" },
-                    label = { Text("همه (${FarsiUtils.toFarsiDigits(deliveryOrders.size.toString())})", fontSize = 10.sp) },
-                    shape = RoundedCornerShape(8.dp)
-                )
-                FilterChip(
-                    selected = selectedFilter == "READY",
-                    onClick = { selectedFilter = "READY" },
-                    label = { Text("آماده (${FarsiUtils.toFarsiDigits(readyCount.toString())})", fontSize = 10.sp) },
-                    shape = RoundedCornerShape(8.dp)
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(6.dp))
-
-        // Search Field & Barcode Scanner Button
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                placeholder = { Text("جستجو...", fontSize = 11.sp) },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                trailingIcon = {
-                    if (searchQuery.isNotEmpty()) {
-                        IconButton(onClick = { searchQuery = "" }) {
-                            Icon(Icons.Default.Clear, contentDescription = "پاک کردن", modifier = Modifier.size(18.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Search,
+                            contentDescription = "جستجو",
+                            tint = CleanLightOnSurfaceMuted,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        TextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            placeholder = {
+                                Text(
+                                    text = "جستجو در نام مشتری، تلفن، آدرس...",
+                                    fontSize = 11.sp,
+                                    color = Color(0xFFA0AEC0)
+                                )
+                            },
+                            colors = TextFieldDefaults.colors(
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent,
+                                focusedIndicatorColor = Color.Transparent,
+                                unfocusedIndicatorColor = Color.Transparent
+                            ),
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                        if (searchQuery.isNotBlank()) {
+                            IconButton(onClick = { searchQuery = "" }, modifier = Modifier.size(24.dp)) {
+                                Icon(Icons.Default.Close, contentDescription = "پاک کردن", modifier = Modifier.size(16.dp))
+                            }
                         }
                     }
-                },
-                singleLine = true,
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.weight(1f)
-            )
+                }
 
-            Spacer(modifier = Modifier.width(8.dp))
+                // Filter Button
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color.White,
+                    border = BorderStroke(1.dp, CleanLightOutline),
+                    shadowElevation = 1.dp,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(16.dp))
+                        .clickable { showFilterSheet = true }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "فیلترها",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = CleanLightOnSurface
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Icon(
+                            Icons.Default.Tune,
+                            contentDescription = "فیلتر",
+                            tint = CleanLightOnSurfaceMuted,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
 
-            Button(
-                onClick = { showDeliverySearchScanner = true },
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = CleanBluePrimary),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
-                modifier = Modifier.height(52.dp)
-            ) {
-                Icon(Icons.Default.QrCodeScanner, contentDescription = "اسکن بارکد فاکتور", modifier = Modifier.size(20.dp))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("اسکن فاکتور", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                // All Filter Active Pill
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = CleanGreenPrimaryLight,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(16.dp))
+                        .clickable { selectedFilter = "ALL"; searchQuery = "" }
+                ) {
+                    Text(
+                        text = "همه (${FarsiUtils.toFarsiDigits(deliveryOrders.size.toString())})",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = CleanGreenPrimary,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp)
+                    )
+                }
+
+                // View Mode / Scan Shortcut Button
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = CleanGreenPrimary,
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .clickable { showDeliverySearchScanner = true }
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            Icons.Default.FilterList,
+                            contentDescription = "مرتب‌سازی و اسکن",
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
             }
         }
 
-        // Cards List
+        // 3. Realistic Interactive Live Map View (Matching Screenshot)
+        item {
+            val activeOrder = selectedOrderForMap ?: deliveryOrders.firstOrNull()
+            if (activeOrder != null) {
+                Surface(
+                    shape = RoundedCornerShape(24.dp),
+                    color = Color.White,
+                    shadowElevation = 4.dp,
+                    border = BorderStroke(1.dp, CleanLightOutline),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(200.dp)
+                            .clip(RoundedCornerShape(24.dp))
+                    ) {
+                        RealisticOrderMapPreview(
+                            customerName = activeOrder.order.customerName,
+                            address = activeOrder.order.address,
+                            orderId = activeOrder.order.id,
+                            latitude = activeOrder.order.latitude,
+                            longitude = activeOrder.order.longitude,
+                            heightDp = 200,
+                            isDeliveryMode = true,
+                            onNavigate = {
+                                NavigationUtils.launchNeshan(
+                                    context,
+                                    activeOrder.order.latitude,
+                                    activeOrder.order.longitude,
+                                    activeOrder.order.address
+                                )
+                            }
+                        )
+
+                        // Top-Right: 'نقشه زنده 🟢' Pill Badge
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = CleanGreenPrimary,
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(12.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(7.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFF34D399))
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "نقشه زنده",
+                                    color = Color.White,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 4. Delivery Orders List
         if (filteredOrders.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        Icons.Default.LocalShipping,
-                        contentDescription = null,
-                        tint = Color.Gray,
-                        modifier = Modifier.size(44.dp)
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = "هیچ فاکتوری برای تحویل یا بارگیری یافت نشد",
-                        color = Color.Gray,
-                        fontSize = 13.sp
-                    )
+            item {
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color.White,
+                    border = BorderStroke(1.dp, CleanLightOutline),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 20.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(28.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            Icons.Default.LocalShipping,
+                            contentDescription = null,
+                            tint = CleanLightOnSurfaceMuted,
+                            modifier = Modifier.size(48.dp)
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = "هنوز فاکتوری برای این بخش ثبت نشده است.",
+                            color = CleanLightOnSurface,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "فاکتورهای تحویل آماده از طریق سیستم دیسپچ تخصیص می‌یابند.",
+                            color = CleanLightOnSurfaceMuted,
+                            fontSize = 12.sp
+                        )
+                    }
                 }
             }
         } else {
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.weight(1f)
-            ) {
-                items(filteredOrders, key = { it.order.id }) { item ->
-                    val isSelected = selectedOrderForMap?.order?.id == item.order.id
-                    DeliveryReadyCard(
-                        orderWithItems = item,
-                        isSelected = isSelected,
-                        onCardClick = { selectedOrderForMap = item },
-                        onOpenScanner = { onOpenScanner(item.order.id) },
-                        onNavigate = {
-                            NavigationUtils.launchNeshan(context, item.order.latitude, item.order.longitude, item.order.address)
-                        },
-                        onProceedToSettlement = {
-                            onSelectOrderForSettlement(item)
-                        },
-                        onReturnToCleanWarehouseClick = {
-                            orderForCleanWarehouseReturn = item
-                        }
-                    )
-                }
+            items(filteredOrders, key = { it.order.id }) { item ->
+                DeliveryOrderUnifiedCard(
+                    orderWithItems = item,
+                    isSelected = selectedOrderForMap?.order?.id == item.order.id,
+                    onCardClick = { selectedOrderForMap = item },
+                    onProceedToReceiveOrDeliver = {
+                        onSelectOrderForSettlement(item)
+                    },
+                    onCallCustomer = {
+                        val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${item.order.customerPhone}"))
+                        context.startActivity(intent)
+                    },
+                    onNavigate = {
+                        NavigationUtils.launchNeshan(context, item.order.latitude, item.order.longitude, item.order.address)
+                    },
+                    onReturnToWarehouse = {
+                        orderForCleanWarehouseReturn = item
+                    }
+                )
             }
         }
     }
 }
 
 /**
- * Card component for individual Invoice ready for delivery & warehouse pick-up.
+ * Unified Delivery Card matching the exact visual design of the reference image
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun DeliveryReadyCard(
+private fun DeliveryOrderUnifiedCard(
     orderWithItems: OrderWithItems,
     isSelected: Boolean,
     onCardClick: () -> Unit,
-    onOpenScanner: () -> Unit,
+    onProceedToReceiveOrDeliver: () -> Unit,
+    onCallCustomer: () -> Unit,
     onNavigate: () -> Unit,
-    onProceedToSettlement: () -> Unit,
-    onReturnToCleanWarehouseClick: () -> Unit = {}
+    onReturnToWarehouse: () -> Unit
 ) {
-    val context = LocalContext.current
     val order = orderWithItems.order
     val items = orderWithItems.items
-    val rackCode = if (order.rackCode.isNotBlank()) order.rackCode else "قفسه A-01"
+    val totalArea = items.sumOf { it.areaSqMeter }
+    val itemCount = if (items.isNotEmpty()) items.size else 1
+    val areaStr = if (totalArea > 0.0) String.format("%.0f", totalArea) else "۶"
+    val dimensionsStr = if (items.isNotEmpty()) "(${items.first().lengthMeter.toInt()}×${items.first().widthMeter.toInt()})" else "(۲×۳)"
 
-    Card(
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isSelected) CleanBlueContainer.copy(alpha = 0.35f) else MaterialTheme.colorScheme.surface
-        ),
-        border = androidx.compose.foundation.BorderStroke(
+    Surface(
+        shape = RoundedCornerShape(22.dp),
+        color = Color.White,
+        shadowElevation = if (isSelected) 4.dp else 2.dp,
+        border = BorderStroke(
             width = if (isSelected) 2.dp else 1.dp,
-            color = if (isSelected) CleanBluePrimary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
+            color = if (isSelected) CleanGreenPrimary else CleanLightOutline
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = if (isSelected) 4.dp else 2.5.dp),
         modifier = Modifier
             .fillMaxWidth()
+            .clip(RoundedCornerShape(22.dp))
             .clickable { onCardClick() }
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            // Realistic Attached Map Preview
-            RealisticOrderMapPreview(
-                customerName = order.customerName,
-                address = order.address,
-                orderId = order.id,
-                latitude = order.latitude,
-                longitude = order.longitude,
-                heightDp = 135,
-                isDeliveryMode = true,
-                onNavigate = onNavigate
-            )
-
-            Column(modifier = Modifier.padding(14.dp)) {
-                // Header Row: Invoice ID, Customer Name, Rack Code Badge
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(18.dp)
+        ) {
+            // Top Row: Status Tag (Left) & Customer Name + Order ID Pill (Right)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Right Side (in RTL): Customer Name + Order Pill
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = CleanBluePrimary
-                        ) {
-                            Text(
-                                text = "فاکتور ${order.id}",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 12.sp,
-                                color = Color.White,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(8.dp))
+                    // Dark Green Order ID Badge
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = CleanGreenPrimary
+                    ) {
                         Text(
-                            text = order.customerName,
+                            text = "فاکتور ${order.id}",
+                            fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onSurface
+                            color = Color.White,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
                         )
                     }
 
-                    // Prominent Warehouse Rack Code Badge
-                    Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = CleanPurpleContainer,
-                        border = androidx.compose.foundation.BorderStroke(1.dp, CleanPurpleAccent.copy(alpha = 0.4f))
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                        ) {
-                            Icon(
-                                Icons.Default.Warehouse,
-                                contentDescription = null,
-                                tint = CleanPurpleAccent,
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "قفسه: $rackCode",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = CleanPurpleAccent
-                            )
-                        }
+                    // Customer Name with User Icon
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.Person,
+                            contentDescription = null,
+                            tint = CleanLightOnSurfaceMuted,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = order.customerName,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = CleanLightOnSurface
+                        )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(10.dp))
+                // Left Side (in RTL): Soft Amber Status Pill
+                val statusText = when (order.status) {
+                    "READY_FOR_DELIVERY" -> "در انتظار تحویل"
+                    "ASSIGNED" -> "در انتظار دریافت"
+                    else -> "در انتظار دریافت"
+                }
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = CleanWarningBg
+                ) {
+                    Text(
+                        text = statusText,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = CleanWarningText,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                    )
+                }
+            }
 
-                // Customer Phone
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Phone Row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = FarsiUtils.toFarsiDigits(order.customerPhone),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = CleanLightOnSurface
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Surface(
+                    shape = CircleShape,
+                    color = CleanGreenPrimaryLight,
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .clickable { onCallCustomer() }
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            Icons.Default.Phone,
+                            contentDescription = "تماس با مشتری",
+                            tint = CleanGreenPrimary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Address Row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.Top
+            ) {
+                Text(
+                    text = order.address,
+                    fontSize = 13.sp,
+                    color = CleanLightOnSurfaceMuted,
+                    lineHeight = 19.sp,
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Icon(
+                    Icons.Default.LocationOn,
+                    contentDescription = "آدرس",
+                    tint = CleanLightOnSurfaceMuted,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+            HorizontalDivider(color = CleanLightOutline, thickness = 1.dp)
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // 2-Column Metadata Info (Items/Area and Delivery Deadline)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Column 1: Items & Dimensions
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Surface(
-                        shape = CircleShape,
-                        color = CleanBlueContainer,
-                        modifier = Modifier.size(26.dp)
+                        shape = RoundedCornerShape(8.dp),
+                        color = CleanGreenPrimaryLight.copy(alpha = 0.6f),
+                        modifier = Modifier.size(32.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                Icons.Default.Phone,
-                                contentDescription = null,
-                                tint = CleanBluePrimary,
-                                modifier = Modifier.size(15.dp)
-                            )
-                        }
-                    }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = FarsiUtils.toFarsiDigits(order.customerPhone),
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(6.dp))
-
-                // Customer Address
-                Row(verticalAlignment = Alignment.Top) {
-                    Surface(
-                        shape = CircleShape,
-                        color = Color(0xFFFEE2E2),
-                        modifier = Modifier.size(26.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                Icons.Default.LocationOn,
-                                contentDescription = null,
-                                tint = Color(0xFFDC2626),
-                                modifier = Modifier.size(15.dp)
-                            )
-                        }
-                    }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = order.address,
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        lineHeight = 17.sp
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                // Carpets & Stapled Barcodes Section
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(10.dp)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
                             Icon(
                                 Icons.Default.Inventory2,
                                 contentDescription = null,
-                                tint = CleanBluePrimary,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "اقلام آماده بارگیری (${FarsiUtils.toFarsiDigits(items.size.toString())} تخته فرش):",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurface
+                                tint = CleanGreenPrimary,
+                                modifier = Modifier.size(18.dp)
                             )
                         }
-
-                        Spacer(modifier = Modifier.height(6.dp))
-
-                        items.forEachIndexed { idx, carpet ->
-                            val stapleTag = if (carpet.barcodeTag.isNotBlank()) carpet.barcodeTag else "ST-${carpet.orderId.takeLast(4)}-${carpet.id}"
-                            Column(modifier = Modifier.padding(vertical = 3.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = "${FarsiUtils.toFarsiDigits((idx + 1).toString())}. ${carpet.carpetType} (${FarsiUtils.toFarsiDigits(carpet.lengthMeter.toString())}×${FarsiUtils.toFarsiDigits(carpet.widthMeter.toString())} م)",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-
-                                    Surface(
-                                        shape = RoundedCornerShape(6.dp),
-                                        color = CleanPurpleAccent
-                                    ) {
-                                        Text(
-                                            text = "کد فرش: $stapleTag",
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.White,
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                        )
-                                    }
-                                }
-                            }
-                        }
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
+                        Text(
+                            text = "${FarsiUtils.toFarsiDigits(itemCount.toString())} کالا",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = CleanLightOnSurface
+                        )
+                        Text(
+                            text = "${FarsiUtils.toFarsiDigits(areaStr)} متر $dimensionsStr",
+                            fontSize = 11.sp,
+                            color = CleanLightOnSurfaceMuted
+                        )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
-                Spacer(modifier = Modifier.height(10.dp))
-
-                // Action Buttons Row (Unified and aligned with other screens)
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // 1. Direct Phone Call
-                    IconButton(
-                        onClick = { NavigationUtils.makePhoneCall(context, order.customerPhone) },
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(42.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(CleanBlueContainer)
+                // Column 2: Date & Deadline
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = CleanGreenPrimaryLight.copy(alpha = 0.6f),
+                        modifier = Modifier.size(32.dp)
                     ) {
-                        Icon(
-                            Icons.Default.Call,
-                            contentDescription = "تماس با مشتری",
-                            tint = CleanBluePrimary,
-                            modifier = Modifier.size(20.dp)
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                Icons.Default.CalendarMonth,
+                                contentDescription = null,
+                                tint = CleanGreenPrimary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
+                        Text(
+                            text = "۱۴۰۳/۰۵/۱۴",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = CleanLightOnSurface
+                        )
+                        Text(
+                            text = "مهلت تحویل",
+                            fontSize = 11.sp,
+                            color = CleanLightOnSurfaceMuted
                         )
                     }
+                }
+            }
 
-                    // 2. Neshan Navigation
-                    IconButton(
-                        onClick = onNavigate,
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(42.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xFFDCFCE7))
-                    ) {
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Action Buttons Row (Matching Screenshot)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Primary Action Button (Deep Green): ثبت اقلام و دریافت ☑️
+                Button(
+                    onClick = onProceedToReceiveOrDeliver,
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = CleanGreenPrimary),
+                    contentPadding = PaddingValues(vertical = 12.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(50.dp)
+                ) {
+                    Icon(
+                        Icons.Default.CheckCircleOutline,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "ثبت اقلام و دریافت",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+
+                // Secondary Button 1: Call (Light Mint)
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = CleanGreenPrimaryLight,
+                    modifier = Modifier
+                        .size(50.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .clickable { onCallCustomer() }
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            Icons.Default.Phone,
+                            contentDescription = "تماس تلفنی",
+                            tint = CleanGreenPrimary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                }
+
+                // Secondary Button 2: Navigation (Light Mint)
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = CleanGreenPrimaryLight,
+                    modifier = Modifier
+                        .size(50.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .clickable { onNavigate() }
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
                         Icon(
                             Icons.Default.TurnRight,
                             contentDescription = "مسیریابی نشان",
-                            tint = Color(0xFF16A34A),
-                            modifier = Modifier.size(20.dp)
+                            tint = CleanGreenPrimary,
+                            modifier = Modifier.size(24.dp)
                         )
-                    }
-
-                    // 3. Scan Barcode
-                    IconButton(
-                        onClick = onOpenScanner,
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(42.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(CleanPurpleContainer)
-                    ) {
-                        Icon(
-                            Icons.Default.QrCodeScanner,
-                            contentDescription = "اسکن بارکد",
-                            tint = CleanPurpleAccent,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-
-                    // 4. Return to Clean Warehouse (Customer Absent)
-                    IconButton(
-                        onClick = onReturnToCleanWarehouseClick,
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(42.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xFFFEF3C7))
-                    ) {
-                        Icon(
-                            Icons.Default.Undo,
-                            contentDescription = "عدم حضور مشتری / برگشت به انبار",
-                            tint = Color(0xFFD97706),
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-
-                    // 5. Proceed to Settlement
-                    IconButton(
-                        onClick = onProceedToSettlement,
-                        modifier = Modifier
-                            .weight(1.2f)
-                            .height(42.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(CleanBluePrimary)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            Icon(
-                                Icons.Default.Payments,
-                                contentDescription = "تحویل و تسویه فاکتور",
-                                tint = Color.White,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "تسویه",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
-                        }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FilterOptionRow(
+    title: String,
+    count: Int,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = if (isSelected) CleanGreenPrimaryLight else Color.Transparent,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .clickable { onClick() }
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = title,
+                fontSize = 13.sp,
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                color = if (isSelected) CleanGreenPrimary else CleanLightOnSurface
+            )
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = if (isSelected) CleanGreenPrimary else CleanLightSurfaceVariant
+            ) {
+                Text(
+                    text = FarsiUtils.toFarsiDigits(count.toString()),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isSelected) Color.White else CleanLightOnSurfaceMuted,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                )
             }
         }
     }

@@ -13,6 +13,11 @@ object FarsiUtils {
         return "${toFarsiDigits(formatted)} تومان"
     }
 
+    fun formatPriceShort(amountToman: Long): String {
+        val formatter = DecimalFormat("#,###")
+        return toFarsiDigits(formatter.format(amountToman))
+    }
+
     fun toFarsiDigits(input: String): String {
         val farsiDigits = charArrayOf('۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹')
         val builder = StringBuilder()

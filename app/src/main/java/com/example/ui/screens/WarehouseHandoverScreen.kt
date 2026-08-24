@@ -1,7 +1,7 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -16,434 +16,448 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.local.model.OrderWithItems
+import com.example.data.model.ScanStage
+import com.example.ui.components.BarcodeScannerModal
+import com.example.ui.components.RackAssignmentDialog
 import com.example.ui.theme.*
 import com.example.utils.FarsiUtils
-import com.example.utils.NavigationUtils
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun WarehouseHandoverScreen(
     orders: List<OrderWithItems>,
     onConfirmWarehouseHandover: (orderId: String, rackCode: String) -> Unit,
-    onPrintWarehouseReceipt: (OrderWithItems) -> Unit,
-    onOpenScanner: (orderId: String) -> Unit
+    onPrintWarehouseReceipt: (OrderWithItems) -> Unit = {},
+    onOpenScanner: (orderId: String) -> Unit = {},
+    onLoadCarpetIntoVan: (orderId: String) -> Unit = {}
 ) {
-    val context = LocalContext.current
-    var searchQuery by remember { mutableStateOf("") }
-    var selectedFilter by remember { mutableStateOf("ALL") } // ALL, PENDING, COMPLETED
-
-    // Filter orders relevant for warehouse handover (only pending handover to workshop/warehouse)
-    val warehouseOrders = orders.filter { item ->
-        val status = item.order.status
-        // Orders that are collected in inspection (or collection orders with carpet items) and NOT yet handed over to workshop
-        (status == "COLLECTED_IN_INSPECTION" || (status == "ASSIGNED" && item.items.isNotEmpty() && item.order.orderType != "DELIVERY")) &&
-                status != "DELIVERED_TO_WORKSHOP" &&
-                status != "WASHING" &&
-                status != "READY_FOR_DELIVERY" &&
-                status != "DELIVERED_SETTLED" &&
-                status != "OFFICE_SETTLED" &&
-                status != "RETURNED_TO_CLEAN_WAREHOUSE"
-    }.filter { item ->
-        val matchesSearch = searchQuery.isBlank() ||
-                item.order.id.contains(searchQuery, true) ||
-                item.order.customerName.contains(searchQuery, true) ||
-                item.order.rackCode.contains(searchQuery, true)
-
-        val matchesFilter = when (selectedFilter) {
-            "PENDING" -> item.order.rackCode.isBlank()
-            "WITH_RACK" -> item.order.rackCode.isNotBlank()
-            else -> true
-        }
-
-        matchesSearch && matchesFilter
+    // 1. Inbound to warehouse: collected from customers, waiting for rack assignment
+    val inboundOrders = orders.filter {
+        it.order.status == "COLLECTED_IN_INSPECTION" ||
+                (it.order.orderType == "COLLECTION" && it.order.status == "ASSIGNED" && it.items.isNotEmpty())
     }
 
-    val pendingRackCount = warehouseOrders.count { it.order.rackCode.isBlank() }
-    val withRackCount = warehouseOrders.count { it.order.rackCode.isNotBlank() }
+    // 2. Outbound from warehouse: washed carpets waiting to be loaded onto van for delivery
+    val outboundOrders = orders.filter {
+        it.order.status == "DELIVERED_TO_WORKSHOP" || it.order.status == "WASHING" || it.order.status == "READY_FOR_DELIVERY"
+    }
 
-    Column(
+    var selectedTab by remember { mutableStateOf(0) } // 0: Inbound (تحویل به کارگاه), 1: Outbound (بارگیری از انبار)
+    var selectedOrderForRack by remember { mutableStateOf<OrderWithItems?>(null) }
+    var showScanModalForVerification by remember { mutableStateOf(false) }
+
+    val activeRackOrder = selectedOrderForRack
+    if (activeRackOrder != null) {
+        RackAssignmentDialog(
+            orderId = activeRackOrder.order.id,
+            currentRackCode = activeRackOrder.order.rackCode,
+            onDismiss = { selectedOrderForRack = null },
+            onConfirm = { rack ->
+                onConfirmWarehouseHandover(activeRackOrder.order.id, rack)
+                selectedOrderForRack = null
+            }
+        )
+    }
+
+    if (showScanModalForVerification) {
+        BarcodeScannerModal(
+            expectedOrder = null,
+            allOrders = if (selectedTab == 0) inboundOrders else outboundOrders,
+            scanStage = if (selectedTab == 0) ScanStage.WORKSHOP else ScanStage.DELIVERY,
+            onDismiss = { showScanModalForVerification = false },
+            onConfirmVerification = { result ->
+                showScanModalForVerification = false
+                val matched = result.orderWithItems
+                if (selectedTab == 0) {
+                    selectedOrderForRack = matched
+                } else {
+                    onLoadCarpetIntoVan(matched.order.id)
+                }
+            },
+            onReportMismatchToDispatch = { showScanModalForVerification = false }
+        )
+    }
+
+    LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .padding(12.dp)
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+        contentPadding = PaddingValues(top = 12.dp, bottom = 24.dp)
     ) {
-        // 1. Warehouse Handover Stats Banner
-        Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
-            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 10.dp)
-        ) {
+        // 1. KPI Summary Cards
+        item {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Default.Warehouse,
-                        contentDescription = null,
-                        tint = CleanBluePrimary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "${FarsiUtils.toFarsiDigits(warehouseOrders.size.toString())} سفارش آماده تحویل انبار",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+                // Card 1: تحویل به انبار (Inbound)
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color.White,
+                    shadowElevation = 3.dp,
+                    border = BorderStroke(1.dp, CleanLightOutline),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = FarsiUtils.toFarsiDigits(inboundOrders.size.toString()),
+                                fontSize = 24.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = CleanGreenPrimary
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .size(24.dp)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(CleanGreenPrimaryLight),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Default.Input,
+                                    contentDescription = null,
+                                    tint = CleanGreenPrimary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                        Text(
+                            text = "فرش‌های ورودی به انبار",
+                            fontSize = 11.sp,
+                            color = CleanLightOnSurfaceMuted,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
                 }
 
+                // Card 2: آماده بارگیری (Outbound)
                 Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = if (pendingRackCount > 0) Color(0xFFFEF3C7) else Color(0xFFDCFCE7)
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color.White,
+                    shadowElevation = 3.dp,
+                    border = BorderStroke(1.dp, CleanLightOutline),
+                    modifier = Modifier.weight(1f)
                 ) {
-                    Text(
-                        text = if (pendingRackCount > 0) "${FarsiUtils.toFarsiDigits(pendingRackCount.toString())} نیاز به تعیین قفسه" else "همه قفسه‌بندی شد",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (pendingRackCount > 0) Color(0xFFD97706) else Color(0xFF16A34A),
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                    )
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = FarsiUtils.toFarsiDigits(outboundOrders.size.toString()),
+                                fontSize = 24.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = CleanGreenPrimary
+                            )
+                            Icon(
+                                Icons.Default.Output,
+                                contentDescription = null,
+                                tint = CleanGreenPrimary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        Text(
+                            text = "فرش‌های خروجی تمیز",
+                            fontSize = 11.sp,
+                            color = CleanLightOnSurfaceMuted,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
                 }
             }
         }
 
-        // Search Field
-        OutlinedTextField(
-            value = searchQuery,
-            onValueChange = { searchQuery = it },
-            placeholder = { Text("جستجو بر اساس نام مشتری، شماره فاکتور یا کد قفسه...", fontSize = 12.sp) },
-            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-            trailingIcon = {
-                if (searchQuery.isNotEmpty()) {
-                    IconButton(onClick = { searchQuery = "" }) {
-                        Icon(Icons.Default.Clear, contentDescription = "پاک کردن")
+        // 2. Tab Navigation
+        item {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = Color.White,
+                border = BorderStroke(1.dp, CleanLightOutline),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    // Inbound Tab
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (selectedTab == 0) CleanGreenPrimary else Color.Transparent,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { selectedTab = 0 }
+                    ) {
+                        Box(
+                            modifier = Modifier.padding(vertical = 10.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "تحویل به کارگاه (${FarsiUtils.toFarsiDigits(inboundOrders.size.toString())})",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (selectedTab == 0) Color.White else CleanLightOnSurfaceMuted
+                            )
+                        }
+                    }
+
+                    // Outbound Tab
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (selectedTab == 1) CleanGreenPrimary else Color.Transparent,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { selectedTab = 1 }
+                    ) {
+                        Box(
+                            modifier = Modifier.padding(vertical = 10.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "بارگیری از انبار (${FarsiUtils.toFarsiDigits(outboundOrders.size.toString())})",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (selectedTab == 1) Color.White else CleanLightOnSurfaceMuted
+                            )
+                        }
                     }
                 }
-            },
-            singleLine = true,
-            shape = RoundedCornerShape(12.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 10.dp)
-        )
+            }
+        }
 
-        // List of Warehouse Handover Cards
-        if (warehouseOrders.isEmpty()) {
-            Box(
+        // 3. Quick Scanner Barcode Action
+        item {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = CleanGreenPrimaryLight,
+                border = BorderStroke(1.dp, CleanGreenAccent.copy(alpha = 0.3f)),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f),
-                contentAlignment = Alignment.Center
+                    .clip(RoundedCornerShape(16.dp))
+                    .clickable { showScanModalForVerification = true }
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        Icons.Default.Warehouse,
-                        contentDescription = null,
-                        tint = Color.Gray,
-                        modifier = Modifier.size(48.dp)
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "هیچ سفارشی جهت تحویل به انباردار یا تعیین قفسه یافت نشد",
-                        color = Color.Gray,
-                        fontSize = 13.sp
-                    )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(CleanGreenPrimary),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.QrCodeScanner, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = if (selectedTab == 0) "اسکن سریع بارکد فرش جهت قفسه‌گذاری" else "اسکن بارکد جهت بارگیری و تطابق",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = CleanGreenPrimaryDark
+                            )
+                            Text(
+                                text = "دوربین اسکنر بارکد منگنه",
+                                fontSize = 11.sp,
+                                color = CleanLightOnSurfaceMuted
+                            )
+                        }
+                    }
+
+                    Icon(Icons.Default.ArrowBackIosNew, contentDescription = null, tint = CleanGreenPrimary, modifier = Modifier.size(16.dp))
+                }
+            }
+        }
+
+        // 4. Warehouse Orders List
+        val currentOrders = if (selectedTab == 0) inboundOrders else outboundOrders
+        if (currentOrders.isEmpty()) {
+            item {
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color.White,
+                    border = BorderStroke(1.dp, CleanLightOutline),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(28.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            Icons.Default.Warehouse,
+                            contentDescription = null,
+                            tint = CleanLightOnSurfaceMuted,
+                            modifier = Modifier.size(48.dp)
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = if (selectedTab == 0) "هیچ فرشی در انتظار تحویل به انبار نیست." else "هیچ فرشی در انتظار بارگیری نمی‌باشد.",
+                            color = CleanLightOnSurface,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
         } else {
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.weight(1f)
-            ) {
-                items(warehouseOrders, key = { it.order.id }) { item ->
-                    WarehouseHandoverCard(
-                        orderWithItems = item,
-                        onConfirmHandover = { rackCode ->
-                            onConfirmWarehouseHandover(item.order.id, rackCode)
-                        },
-                        onPrintReceipt = { onPrintWarehouseReceipt(item) },
-                        onOpenScanner = { onOpenScanner(item.order.id) }
-                    )
-                }
+            items(currentOrders, key = { it.order.id }) { item ->
+                WarehouseOrderUnifiedCard(
+                    orderWithItems = item,
+                    isInbound = selectedTab == 0,
+                    onAssignRack = { selectedOrderForRack = item },
+                    onLoadVan = { onLoadCarpetIntoVan(item.order.id) }
+                )
             }
         }
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun WarehouseHandoverCard(
+private fun WarehouseOrderUnifiedCard(
     orderWithItems: OrderWithItems,
-    onConfirmHandover: (rackCode: String) -> Unit,
-    onPrintReceipt: () -> Unit,
-    onOpenScanner: () -> Unit
+    isInbound: Boolean,
+    onAssignRack: () -> Unit,
+    onLoadVan: () -> Unit
 ) {
     val order = orderWithItems.order
     val items = orderWithItems.items
+    val totalArea = items.sumOf { it.areaSqMeter }
+    val itemCount = if (items.isNotEmpty()) items.size else 1
 
-    var rackInput by remember(order.rackCode) {
-        mutableStateOf(if (order.rackCode.isNotBlank()) order.rackCode else "A-01")
-    }
-
-    val isHandedOver = order.status == "DELIVERED_TO_WORKSHOP" && order.rackCode.isNotBlank()
-    val quickRacks = listOf("A-01", "A-02", "A-05", "B-01", "B-04", "B-10", "C-03", "D-12")
-
-    Card(
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isHandedOver) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surface
-        ),
-        border = androidx.compose.foundation.BorderStroke(
-            width = 1.dp,
-            color = if (isHandedOver) CleanTealAccent.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.5.dp),
+    Surface(
+        shape = RoundedCornerShape(22.dp),
+        color = Color.White,
+        shadowElevation = 2.dp,
+        border = BorderStroke(1.dp, CleanLightOutline),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Column(modifier = Modifier.padding(14.dp)) {
-            // Header Row: Order ID, Status, Customer Name
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(18.dp)
+        ) {
+            // Header Row: Customer & Order ID + Status
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = CleanBluePrimary
+                        shape = RoundedCornerShape(10.dp),
+                        color = CleanGreenPrimary
                     ) {
                         Text(
                             text = "فاکتور ${order.id}",
-                            fontWeight = FontWeight.Bold,
                             fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
                             color = Color.White,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
                         )
                     }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = order.customerName,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.Person,
+                            contentDescription = null,
+                            tint = CleanLightOnSurfaceMuted,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = order.customerName,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = CleanLightOnSurface
+                        )
+                    }
                 }
 
-                // Status Badge
                 Surface(
                     shape = RoundedCornerShape(10.dp),
-                    color = if (isHandedOver) Color(0xFFDCFCE7) else Color(0xFFFEF3C7)
+                    color = CleanGreenPrimaryLight
                 ) {
                     Text(
-                        text = if (isHandedOver) "تحویل انباردار شد" else "در انتظار تعیین قفسه",
+                        text = if (order.rackCode.isNotBlank()) "قفسه: ${order.rackCode}" else "فاقد قفسه",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (isHandedOver) Color(0xFF16A34A) else Color(0xFFD97706),
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        color = CleanGreenPrimary,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
-            // Carpet Details Summary
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(10.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                Icons.Default.Inventory2,
-                                contentDescription = null,
-                                tint = CleanBluePrimary,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "اقلام تحویلی (${FarsiUtils.toFarsiDigits(items.size.toString())} تخته):",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                        Text(
-                            text = "متراژ: ${FarsiUtils.toFarsiDigits(String.format("%.1f", items.sumOf { it.areaSqMeter }))} م۲",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    items.forEachIndexed { index, carpet ->
-                        val stapleTag = if (carpet.barcodeTag.isNotBlank()) carpet.barcodeTag else "ST-${carpet.orderId.takeLast(4)}-${carpet.id}"
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 3.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = "${FarsiUtils.toFarsiDigits((index + 1).toString())}. ${carpet.carpetType} (${FarsiUtils.toFarsiDigits(carpet.lengthMeter.toString())}×${FarsiUtils.toFarsiDigits(carpet.widthMeter.toString())} م)",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Surface(
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = CleanPurpleAccent
-                                ) {
-                                    Text(
-                                        text = "کد: $stapleTag",
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.White,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                    )
-                                }
-                            }
-
-                            if (carpet.defectsJson.isNotBlank() && carpet.defectsJson != "بدون عیب") {
-                                Surface(
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = CleanRedContainer
-                                ) {
-                                    Text(
-                                        text = carpet.defectsJson,
-                                        fontSize = 10.sp,
-                                        color = CleanRedAccent,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Rack Code Selection Section
-            Text(
-                text = "تعیین شماره قفسه / داربست انبار:",
-                fontWeight = FontWeight.Bold,
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            // Rack Selection Field + Barcode Button
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                OutlinedTextField(
-                    value = rackInput,
-                    onValueChange = { rackInput = it.uppercase() },
-                    placeholder = { Text("شماره قفسه (مثلاً A-01)", fontSize = 12.sp) },
-                    singleLine = true,
-                    leadingIcon = { Icon(Icons.Default.Warehouse, contentDescription = null, tint = CleanPurpleAccent) },
-                    shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier.weight(1f)
-                )
-
-                IconButton(
-                    onClick = onOpenScanner,
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(CleanPurpleContainer)
-                ) {
-                    Icon(
-                        Icons.Default.QrCodeScanner,
-                        contentDescription = "اسکن بارکد قفسه",
-                        tint = CleanPurpleAccent
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Quick Selection Chips for Racks
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                quickRacks.forEach { code ->
-                    FilterChip(
-                        selected = rackInput == code,
-                        onClick = { rackInput = code },
-                        label = { Text(code, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                        shape = RoundedCornerShape(8.dp)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Action Buttons
+            // Metadata summary
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Button(
-                    onClick = {
-                        if (rackInput.isNotBlank()) {
-                            onConfirmHandover(rackInput)
-                        }
-                    },
-                    enabled = rackInput.isNotBlank(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = CleanBluePrimary
-                    ),
-                    modifier = Modifier
-                        .weight(1.3f)
-                        .height(44.dp)
-                ) {
-                    Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("تأیید انباردار & ثبت در پنل", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                }
+                Text(
+                    text = "${FarsiUtils.toFarsiDigits(itemCount.toString())} تخته فرش (${FarsiUtils.toFarsiDigits(String.format("%.1f", totalArea))} مترمربع)",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = CleanLightOnSurface
+                )
 
-                OutlinedButton(
-                    onClick = onPrintReceipt,
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier
-                        .weight(0.9f)
-                        .height(44.dp)
-                ) {
-                    Icon(Icons.Default.Print, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("رسید انبار", fontSize = 11.sp)
-                }
+                Text(
+                    text = order.address.take(25) + if (order.address.length > 25) "..." else "",
+                    fontSize = 11.sp,
+                    color = CleanLightOnSurfaceMuted
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Action Button
+            Button(
+                onClick = if (isInbound) onAssignRack else onLoadVan,
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = CleanGreenPrimary),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+            ) {
+                Icon(
+                    if (isInbound) Icons.Default.QrCodeScanner else Icons.Default.LocalShipping,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = if (isInbound) "تخصیص قفسه و ثبت در کارگاه" else "تأیید بارگیری در خودرو",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold
+                )
             }
         }
     }

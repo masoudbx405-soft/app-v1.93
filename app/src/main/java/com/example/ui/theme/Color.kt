@@ -2,59 +2,71 @@ package com.example.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Zomorrod Emerald & Carpet Luxury Palette
-val CleanBluePrimary = Color(0xFF056549) // Deep Luxury Emerald Green
-val CleanBluePrimaryLight = Color(0xFF10B981) // Emerald Mint Accent
-val CleanBlueOnPrimary = Color(0xFFFFFFFF)
-val CleanBlueContainer = Color(0xFFD1FAE5) // Soft Emerald Mint Tint
-val CleanBlueOnContainer = Color(0xFF022C22) // Deep Emerald Text
+// Saba Logistics Design System Palette (Based on Reference Design)
+val CleanGreenPrimary = Color(0xFF087A5A) // Deep professional brand green
+val CleanGreenPrimaryDark = Color(0xFF056044) // Primary dark green
+val CleanGreenPrimaryLight = Color(0xFFE7F7F1) // Very light mint green surface / active container
+val CleanGreenAccent = Color(0xFF16865F) // Medium success green
+val CleanGreenDarkHeader = Color(0xFF087A5A) // Header curved container
 
-val CleanTealAccent = Color(0xFF0D9488) // Cyan / Sea Wave Accent
-val CleanTealContainer = Color(0xFFCCFBF1) // Soft Water Cyan
+// Secondary / Warning & Pending Accents
+val CleanOrangeAccent = Color(0xFFF2A51A) // Secondary amber accent
+val CleanWarningBg = Color(0xFFFFF4D8) // Warning / Pending pill background
+val CleanWarningText = Color(0xFFB45309) // Warm warning text
 
-val CleanPurpleAccent = Color(0xFFB45309) // Royal Persian Carpet Gold / Amber
-val CleanPurpleContainer = Color(0xFFFEF3C7) // Light Carpet Gold Tint
-
-val CleanRedAccent = Color(0xFFDC2626) // Alert Crimson
+// Alert / Error
+val CleanRedError = Color(0xFFD94B4B)
 val CleanRedContainer = Color(0xFFFEE2E2)
 
-// Light Theme Canvas (Ultra-clean Emerald tinted canvas)
-val CleanLightBackground = Color(0xFFF4F7F5)
-val CleanLightSurface = Color(0xFFFFFFFF)
-val CleanLightSurfaceVariant = Color(0xFFE8F2EC)
-val CleanLightOnSurface = Color(0xFF0F241D)
-val CleanLightOnSurfaceMuted = Color(0xFF4A6B60)
-val CleanLightOutline = Color(0xFFCBDCD3)
-val CleanLightOutlineVariant = Color(0xFFE0ECE6)
+// Light Surfaces & Canvas
+val CleanLightBackground = Color(0xFFF7FAF9) // Clean mint-tinted light canvas
+val CleanLightSurface = Color(0xFFFFFFFF) // Crisp white card & surface
+val CleanLightSurfaceVariant = Color(0xFFEDF5F2)
+val CleanLightOnSurface = Color(0xFF172321) // Deep slate text primary
+val CleanLightOnSurfaceMuted = Color(0xFF687773) // Slate text secondary
+val CleanLightOutline = Color(0xFFDDE8E4) // Border color
+val CleanLightOutlineVariant = Color(0xFFE8F1EE)
 
-// Dark Theme Canvas (Deep Emerald Slate Dark Mode)
-val CleanDarkBackground = Color(0xFF071712)
-val CleanDarkSurface = Color(0xFF0E241D)
-val CleanDarkSurfaceVariant = Color(0xFF16382E)
-val CleanDarkOnSurface = Color(0xFFE6F4EE)
-val CleanDarkOutline = Color(0xFF265244)
-val CleanDarkOutlineVariant = Color(0xFF1C4236)
+// Dark Surfaces (Optional Dark Theme)
+val CleanDarkBackground = Color(0xFF091714)
+val CleanDarkSurface = Color(0xFF112520)
+val CleanDarkSurfaceVariant = Color(0xFF1A332C)
+val CleanDarkOnSurface = Color(0xFFEDF5F2)
+val CleanDarkOutline = Color(0xFF26463D)
+val CleanDarkOutlineVariant = Color(0xFF1C362F)
 
-// Legacy compatibility aliases
-val EmeraldDarkGreen = CleanBlueOnContainer
-val EmeraldPrimary = CleanBluePrimary
-val EmeraldLight = CleanBluePrimaryLight
-val EmeraldMint = CleanBlueContainer
-val GoldAccent = CleanPurpleAccent
-val GoldLight = CleanPurpleContainer
+// Aliases for backwards compatibility with existing screen references
+val CleanBluePrimary = CleanGreenPrimary
+val CleanBluePrimaryLight = CleanGreenAccent
+val CleanBlueOnPrimary = Color(0xFFFFFFFF)
+val CleanBlueContainer = CleanGreenPrimaryLight
+val CleanBlueOnContainer = CleanGreenPrimaryDark
 
-// Semantic Status Colors for Carpet Stages
-val StatusAssignedBg = Color(0xFFFEF3C7)
-val StatusAssignedText = Color(0xFFB45309)
+val CleanTealAccent = CleanGreenAccent
+val CleanTealContainer = CleanGreenPrimaryLight
 
-val StatusInspectionBg = Color(0xFFCCFBF1)
-val StatusInspectionText = Color(0xFF0D9488)
+val CleanPurpleAccent = CleanOrangeAccent
+val CleanPurpleContainer = CleanWarningBg
 
-val StatusWorkshopBg = Color(0xFFD1FAE5)
-val StatusWorkshopText = Color(0xFF047857)
+val CleanRedAccent = CleanRedError
 
-val StatusSettledBg = Color(0xFFECFDF5)
-val StatusSettledText = Color(0xFF059669)
+val EmeraldMint = CleanGreenPrimaryLight
+val EmeraldDarkGreen = CleanGreenPrimary
+val GoldLight = CleanWarningBg
+val GoldAccent = CleanWarningText
 
+// Semantic Status Colors
+val StatusPendingBg = CleanWarningBg
+val StatusPendingText = CleanWarningText
 
+val StatusAssignedBg = CleanWarningBg
+val StatusAssignedText = CleanWarningText
 
+val StatusInspectionBg = CleanGreenPrimaryLight
+val StatusInspectionText = CleanGreenPrimary
+
+val StatusWorkshopBg = CleanGreenPrimaryLight
+val StatusWorkshopText = CleanGreenPrimaryDark
+
+val StatusSettledBg = CleanGreenPrimaryLight
+val StatusSettledText = CleanGreenAccent

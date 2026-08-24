@@ -13,13 +13,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import kotlinx.coroutines.launch
 import com.example.data.local.model.OrderWithItems
 import com.example.ui.components.BarcodeScannerModal
@@ -76,6 +76,8 @@ fun MainDriverScreen(viewModel: DriverViewModel) {
 
     var showPrinterDialog by remember { mutableStateOf(false) }
     var showSyncQueueDialog by remember { mutableStateOf(false) }
+    var showMenuBottomSheet by remember { mutableStateOf(false) }
+    var showNotificationsDialog by remember { mutableStateOf(false) }
     var rackDialogOrderId by remember { mutableStateOf<String?>(null) }
     var settlementOrder by remember { mutableStateOf<OrderWithItems?>(null) }
 
@@ -105,6 +107,177 @@ fun MainDriverScreen(viewModel: DriverViewModel) {
             onDismiss = { showSyncQueueDialog = false },
             onSyncNow = { viewModel.syncWithWebPanel() }
         )
+    }
+
+    // Quick Notifications Dialog
+    if (showNotificationsDialog) {
+        AlertDialog(
+            onDismissRequest = { showNotificationsDialog = false },
+            confirmButton = {
+                TextButton(onClick = { showNotificationsDialog = false }) {
+                    Text("متوجه شدم", fontWeight = FontWeight.Bold, color = CleanGreenPrimary)
+                }
+            },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Notifications, contentDescription = null, tint = CleanGreenPrimary)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("اعلان‌های دیسپچ و سیستم", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = CleanGreenPrimaryLight,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp)) {
+                            Text("مسیر تحویل جدید ثبت شد", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = CleanGreenPrimaryDark)
+                            Text("۳ فاکتور آماده تحویل برای منطقه ولنجک و نیاوران به لیست شما اضافه گردید.", fontSize = 11.sp, color = CleanLightOnSurfaceMuted)
+                        }
+                    }
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = CleanWarningBg,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp)) {
+                            Text("یادآوری تسویه حساب روزانه", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = CleanWarningText)
+                            Text("لطفاً پیش از پایان شیفت، فاکتورهای تحویل‌شده را با امور مالی تسویه نمایید.", fontSize = 11.sp, color = CleanLightOnSurfaceMuted)
+                        }
+                    }
+                }
+            },
+            shape = RoundedCornerShape(20.dp)
+        )
+    }
+
+    // Menu Bottom Sheet for Secondary Navigation & Settings
+    if (showMenuBottomSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showMenuBottomSheet = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = MaterialTheme.colorScheme.surface,
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(CleanGreenPrimaryLight),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.Menu, contentDescription = null, tint = CleanGreenPrimary)
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text("منوی دسترسی سریع سفیر", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Text("قالیشویی صبا • نسخه ۳.۲", fontSize = 11.sp, color = CleanLightOnSurfaceMuted)
+                        }
+                    }
+                    IconButton(onClick = { showMenuBottomSheet = false }) {
+                        Icon(Icons.Default.Close, contentDescription = "بستن")
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+                HorizontalDivider(color = CleanLightOutline)
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Menu items
+                NavigationDrawerItem(
+                    icon = { Icon(Icons.Default.GpsFixed, contentDescription = null, tint = CleanGreenPrimary) },
+                    label = { Text("نقشه و ردیابی لحظه‌ای GPS", fontSize = 13.sp, fontWeight = FontWeight.SemiBold) },
+                    selected = activeTab == 5,
+                    onClick = {
+                        viewModel.setActiveTab(5)
+                        showMenuBottomSheet = false
+                    },
+                    shape = RoundedCornerShape(14.dp),
+                    colors = NavigationDrawerItemDefaults.colors(
+                        selectedContainerColor = CleanGreenPrimaryLight,
+                        unselectedContainerColor = Color.Transparent
+                    )
+                )
+
+                NavigationDrawerItem(
+                    icon = { Icon(Icons.Default.Print, contentDescription = null, tint = CleanGreenPrimary) },
+                    label = { Text("مدیریت چاپگر بلوتوثی فاکتور", fontSize = 13.sp, fontWeight = FontWeight.SemiBold) },
+                    selected = false,
+                    onClick = {
+                        showMenuBottomSheet = false
+                        viewModel.scanBluetoothPrinters(context)
+                        showPrinterDialog = true
+                    },
+                    shape = RoundedCornerShape(14.dp)
+                )
+
+                NavigationDrawerItem(
+                    icon = { Icon(Icons.Default.Sync, contentDescription = null, tint = CleanGreenPrimary) },
+                    label = { Text("صف همگام‌سازی آفلاین (${FarsiUtils.toFarsiDigits(pendingQueueCount.toString())})", fontSize = 13.sp, fontWeight = FontWeight.SemiBold) },
+                    selected = false,
+                    onClick = {
+                        showMenuBottomSheet = false
+                        showSyncQueueDialog = true
+                    },
+                    shape = RoundedCornerShape(14.dp)
+                )
+
+                NavigationDrawerItem(
+                    icon = { Icon(Icons.Default.Settings, contentDescription = null, tint = CleanGreenPrimary) },
+                    label = { Text("تنظیمات سرور و برنامه", fontSize = 13.sp, fontWeight = FontWeight.SemiBold) },
+                    selected = activeTab == 6,
+                    onClick = {
+                        viewModel.setActiveTab(6)
+                        showMenuBottomSheet = false
+                    },
+                    shape = RoundedCornerShape(14.dp),
+                    colors = NavigationDrawerItemDefaults.colors(
+                        selectedContainerColor = CleanGreenPrimaryLight,
+                        unselectedContainerColor = Color.Transparent
+                    )
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+                HorizontalDivider(color = CleanLightOutline)
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Logout
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = CleanRedContainer.copy(alpha = 0.5f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            showMenuBottomSheet = false
+                            viewModel.logoutDriver()
+                        }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Logout, contentDescription = null, tint = CleanRedError, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text("خروج از حساب کاربری سفیر", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = CleanRedError)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+            }
+        }
     }
 
     val activeRackOrderId = rackDialogOrderId
@@ -195,403 +368,404 @@ fun MainDriverScreen(viewModel: DriverViewModel) {
                 onResetOtp = { viewModel.resetOtpState() },
                 otpSent = otpSent,
                 isLoading = authLoading,
-                errorMessage = authError
+                errorMessage = authError,
+                generatedOtpHint = generatedOtp
             )
         } else {
             Scaffold(
+                containerColor = CleanLightBackground,
                 topBar = {
+                    // Curved Rich Emerald Green Top Header (Exactly matching reference screenshot)
                     Surface(
-                        shape = RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp),
-                        color = MaterialTheme.colorScheme.surface,
-                        tonalElevation = 4.dp,
-                        shadowElevation = 4.dp
+                        shape = RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp),
+                        color = CleanGreenPrimary,
+                        shadowElevation = 6.dp,
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        TopAppBar(
-                            title = {
-                                val currentScreenTitle = when (activeTab) {
-                                    0 -> "مسیر تحویل مشتریان"
-                                    1 -> "جمع‌آوری و ثبت فاکتور"
-                                    2 -> "تحویل به انبار قالیشویی"
-                                    3 -> "تسویه حساب و فاکتورها"
-                                    4 -> "پشتیبانی و چت دیسپچ"
-                                    5 -> "موقعیت مکانی GPS"
-                                    6 -> "تنظیمات نرم‌افزار"
-                                    99 -> "صدور پیش‌فاکتور دریافت"
-                                    else -> "قالیشویی صبا"
-                                }
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .statusBarsPadding()
+                                .padding(horizontal = 16.dp, vertical = 12.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // Right Side (in RTL - Leading): Menu Hamburger in rounded box
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
-                                    Box(
+                                    Surface(
+                                        shape = RoundedCornerShape(14.dp),
+                                        color = Color(0xFF0E8C68),
                                         modifier = Modifier
-                                            .size(38.dp)
-                                            .clip(RoundedCornerShape(12.dp))
-                                            .background(CleanBluePrimary.copy(alpha = 0.12f)),
-                                        contentAlignment = Alignment.Center
+                                            .size(42.dp)
+                                            .clip(RoundedCornerShape(14.dp))
+                                            .clickable { showMenuBottomSheet = true }
                                     ) {
-                                        Icon(
-                                            when (activeTab) {
-                                                0 -> Icons.Default.LocalShipping
-                                                1 -> Icons.Default.EditNote
-                                                2 -> Icons.Default.Warehouse
-                                                3 -> Icons.Default.ReceiptLong
-                                                4 -> Icons.Default.SupportAgent
-                                                5 -> Icons.Default.GpsFixed
-                                                6 -> Icons.Default.Settings
-                                                99 -> Icons.Default.Receipt
-                                                else -> Icons.Default.LocalShipping
-                                            },
-                                            contentDescription = null,
-                                            tint = CleanBluePrimary,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    }
-                                    Column {
-                                        Text(
-                                            text = currentScreenTitle,
-                                            style = MaterialTheme.typography.titleMedium,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 15.sp
-                                        )
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(6.dp)
-                                                    .clip(CircleShape)
-                                                    .background(if (isOnline) Color(0xFF10B981) else Color(0xFFF59E0B))
-                                            )
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text(
-                                                text = if (isOnline) "سفیر صبا • متصل به سرور" else "حالت آفلاین ناوگان",
-                                                fontSize = 10.sp,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(
+                                                Icons.Default.Menu,
+                                                contentDescription = "منوی اصلی",
+                                                tint = Color.White,
+                                                modifier = Modifier.size(22.dp)
                                             )
                                         }
                                     }
-                                }
-                            },
-                            actions = {
-                                // Active status pill badge with Room offline sync indicator
-                                Surface(
-                                    shape = RoundedCornerShape(20.dp),
-                                    color = if (!isOnline || pendingQueueCount > 0) Color(0xFFFEF3C7) else CleanTealContainer,
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(20.dp))
-                                        .clickable { showSyncQueueDialog = true }
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
-                                    ) {
-                                        if (isSyncing) {
-                                            CircularProgressIndicator(
-                                                modifier = Modifier.size(12.dp),
-                                                strokeWidth = 2.dp,
-                                                color = CleanBluePrimary
-                                            )
-                                        } else {
+
+                                    // Screen Title and Connection Status
+                                    val currentScreenTitle = when (activeTab) {
+                                        0 -> "مسیر تحویل مشتریان"
+                                        1 -> "جمع‌آوری و ثبت فاکتور"
+                                        2 -> "تحویل به انبار قالیشویی"
+                                        3 -> "تسویه حساب و فاکتورها"
+                                        4 -> "پشتیبانی و چت دیسپچ"
+                                        5 -> "موقعیت مکانی GPS"
+                                        6 -> "تنظیمات نرم‌افزار"
+                                        99 -> "صدور پیش‌فاکتور دریافت"
+                                        else -> "قالیشویی صبا"
+                                    }
+
+                                    Column {
+                                        Text(
+                                            text = currentScreenTitle,
+                                            color = Color.White,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            fontSize = 18.sp
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
                                             Box(
                                                 modifier = Modifier
                                                     .size(7.dp)
                                                     .clip(CircleShape)
-                                                    .background(if (!isOnline || pendingQueueCount > 0) Color(0xFFD97706) else CleanTealAccent)
+                                                    .background(if (isOnline) Color(0xFF34D399) else Color(0xFFFBBF24))
+                                            )
+                                            Spacer(modifier = Modifier.width(5.dp))
+                                            Text(
+                                                text = if (isOnline) "سفیر صبا • متصل به سرور" else "حالت آفلاین ناوگان",
+                                                fontSize = 11.sp,
+                                                color = Color(0xFFD1FAE5),
+                                                fontWeight = FontWeight.Medium
                                             )
                                         }
-                                        Spacer(modifier = Modifier.width(5.dp))
-                                        Text(
-                                            text = if (pendingQueueCount > 0) "${FarsiUtils.toFarsiDigits(pendingQueueCount.toString())} صف آفلاین" else if (!isOnline) "آفلاین" else "همگام",
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (!isOnline || pendingQueueCount > 0) Color(0xFFB45309) else CleanTealAccent
+                                    }
+                                }
+
+                                // Left Side (in RTL - Trailing): Scanner & Notification Bell with Red Dot
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    // Quick QR / Barcode Scanner Icon
+                                    IconButton(
+                                        onClick = { viewModel.openScanner(com.example.data.model.ScanStage.DELIVERY) },
+                                        modifier = Modifier
+                                            .size(40.dp)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(Color.White.copy(alpha = 0.15f))
+                                    ) {
+                                        Icon(
+                                            Icons.Default.QrCodeScanner,
+                                            contentDescription = "اسکن بارکد / QR کد",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                    }
+
+                                    // Notification Bell with Red Dot
+                                    Box(
+                                        modifier = Modifier
+                                            .size(40.dp)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(Color.White.copy(alpha = 0.15f))
+                                            .clickable { showNotificationsDialog = true },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Notifications,
+                                            contentDescription = "اعلان‌ها",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                        // Red dot indicator
+                                        Box(
+                                            modifier = Modifier
+                                                .align(Alignment.TopEnd)
+                                                .padding(top = 8.dp, end = 8.dp)
+                                                .size(8.dp)
+                                                .clip(CircleShape)
+                                                .background(CleanRedError)
                                         )
                                     }
                                 }
-
-                                Spacer(modifier = Modifier.width(4.dp))
-
-                                // Quick Barcode/QR Scanner button
-                                IconButton(
-                                    onClick = { viewModel.openScanner(com.example.data.model.ScanStage.DELIVERY) },
-                                    modifier = Modifier
-                                        .size(38.dp)
-                                        .clip(CircleShape)
-                                        .background(CleanBluePrimary.copy(alpha = 0.08f))
-                                ) {
-                                    Icon(
-                                        Icons.Default.QrCodeScanner,
-                                        contentDescription = "اسکن بارکد / QR کد",
-                                        tint = CleanBluePrimary,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.width(4.dp))
-
-                                // Quick Settings Button
-                                IconButton(
-                                    onClick = { viewModel.setActiveTab(6) },
-                                    modifier = Modifier
-                                        .size(38.dp)
-                                        .clip(CircleShape)
-                                        .background(CleanBluePrimary.copy(alpha = 0.08f))
-                                ) {
-                                    Icon(
-                                        Icons.Default.Settings,
-                                        contentDescription = "تنظیمات برنامه",
-                                        tint = CleanBluePrimary,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-                            },
-                            colors = TopAppBarDefaults.topAppBarColors(
-                                containerColor = Color.Transparent
-                            )
-                        )
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                        }
                     }
                 },
                 bottomBar = {
+                    // Unified Premium Bottom Navigation Bar (Matching Screenshot)
                     Surface(
                         shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-                        color = MaterialTheme.colorScheme.surface,
-                        tonalElevation = 8.dp,
-                        shadowElevation = 8.dp
+                        color = Color.White,
+                        shadowElevation = 10.dp,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, CleanLightOutline.copy(alpha = 0.6f)),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        NavigationBar(
-                            containerColor = Color.Transparent
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .navigationBarsPadding()
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.SpaceAround,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             // 1. تحویل (Delivery)
-                            NavigationBarItem(
-                                selected = activeTab == 0,
-                                onClick = { viewModel.setActiveTab(0) },
-                                icon = {
-                                    BadgedBox(
-                                        badge = {
-                                            if (pendingDeliveryCount > 0) {
-                                                Badge(
-                                                    containerColor = CleanBluePrimary,
-                                                    contentColor = Color.White
-                                                ) {
-                                                    Text(FarsiUtils.toFarsiDigits(pendingDeliveryCount.toString()), fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                                                }
-                                            }
-                                        }
-                                    ) {
-                                        Icon(Icons.Default.LocalShipping, contentDescription = "تحویل")
-                                    }
-                                },
-                                label = { Text("تحویل", fontSize = 11.sp, fontWeight = if (activeTab == 0) FontWeight.Bold else FontWeight.Normal) }
+                            UnifiedNavItem(
+                                title = "تحویل",
+                                icon = Icons.Default.LocalShipping,
+                                isSelected = activeTab == 0,
+                                badgeCount = pendingDeliveryCount,
+                                badgeColor = CleanGreenPrimary,
+                                onClick = { viewModel.setActiveTab(0) }
                             )
 
                             // 2. جمع‌آوری (Collection)
-                            NavigationBarItem(
-                                selected = activeTab == 1 || activeTab == 99,
-                                onClick = { viewModel.setActiveTab(1) },
-                                icon = {
-                                    BadgedBox(
-                                        badge = {
-                                            if (pendingPickupCount > 0) {
-                                                Badge(
-                                                    containerColor = CleanPurpleAccent,
-                                                    contentColor = Color.White
-                                                ) {
-                                                    Text(FarsiUtils.toFarsiDigits(pendingPickupCount.toString()), fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                                                }
-                                            }
-                                        }
-                                    ) {
-                                        Icon(Icons.Default.EditNote, contentDescription = "جمع‌آوری")
-                                    }
-                                },
-                                label = { Text("جمع‌آوری", fontSize = 11.sp, fontWeight = if (activeTab == 1 || activeTab == 99) FontWeight.Bold else FontWeight.Normal) }
+                            UnifiedNavItem(
+                                title = "جمع‌آوری",
+                                icon = Icons.Default.EditNote,
+                                isSelected = activeTab == 1 || activeTab == 99,
+                                badgeCount = pendingPickupCount,
+                                badgeColor = CleanOrangeAccent,
+                                onClick = { viewModel.setActiveTab(1) }
                             )
 
                             // 3. انبار (Warehouse)
-                            NavigationBarItem(
-                                selected = activeTab == 2,
-                                onClick = { viewModel.setActiveTab(2) },
-                                icon = {
-                                    BadgedBox(
-                                        badge = {
-                                            if (pendingWarehouseCount > 0) {
-                                                Badge(
-                                                    containerColor = CleanTealAccent,
-                                                    contentColor = Color.White
-                                                ) {
-                                                    Text(FarsiUtils.toFarsiDigits(pendingWarehouseCount.toString()), fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                                                }
-                                            }
-                                        }
-                                    ) {
-                                        Icon(Icons.Default.Warehouse, contentDescription = "انبار")
-                                    }
-                                },
-                                label = { Text("انبار", fontSize = 11.sp, fontWeight = if (activeTab == 2) FontWeight.Bold else FontWeight.Normal) }
+                            UnifiedNavItem(
+                                title = "انبار",
+                                icon = Icons.Default.Warehouse,
+                                isSelected = activeTab == 2,
+                                badgeCount = pendingWarehouseCount,
+                                badgeColor = CleanGreenAccent,
+                                onClick = { viewModel.setActiveTab(2) }
                             )
 
                             // 4. تسویه (Settlement)
-                            NavigationBarItem(
-                                selected = activeTab == 3,
-                                onClick = { viewModel.setActiveTab(3) },
-                                icon = {
-                                    BadgedBox(
-                                        badge = {
-                                            if (pendingSettlementCount > 0) {
-                                                Badge(
-                                                    containerColor = Color(0xFF10B981),
-                                                    contentColor = Color.White
-                                                ) {
-                                                    Text(FarsiUtils.toFarsiDigits(pendingSettlementCount.toString()), fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                                                }
-                                            }
-                                        }
-                                    ) {
-                                        Icon(Icons.Default.ReceiptLong, contentDescription = "تسویه")
-                                    }
-                                },
-                                label = { Text("تسویه", fontSize = 11.sp, fontWeight = if (activeTab == 3) FontWeight.Bold else FontWeight.Normal) }
+                            UnifiedNavItem(
+                                title = "تسویه",
+                                icon = Icons.Default.AccountBalanceWallet,
+                                isSelected = activeTab == 3,
+                                badgeCount = pendingSettlementCount,
+                                badgeColor = CleanGreenPrimary,
+                                onClick = { viewModel.setActiveTab(3) }
                             )
 
-                            // 5. پشتیبانی (Support Chat)
-                            NavigationBarItem(
-                                selected = activeTab == 4,
-                                onClick = { viewModel.setActiveTab(4) },
-                                icon = {
-                                    Icon(Icons.Default.SupportAgent, contentDescription = "پشتیبانی")
-                                },
-                                label = { Text("پشتیبانی", fontSize = 11.sp, fontWeight = if (activeTab == 4) FontWeight.Bold else FontWeight.Normal) }
+                            // 5. پشتیبانی (Support)
+                            UnifiedNavItem(
+                                title = "پشتیبانی",
+                                icon = Icons.Default.HeadsetMic,
+                                isSelected = activeTab == 4,
+                                badgeCount = 0,
+                                badgeColor = CleanGreenPrimary,
+                                onClick = { viewModel.setActiveTab(4) }
                             )
                         }
                     }
                 }
             ) { paddingValues ->
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues)
-            ) {
-                when (activeTab) {
-                    0 -> DeliveryRouteScreen(
-                        orders = orders,
-                        onSelectOrderForSettlement = { orderWithItems ->
-                            viewModel.selectOrder(orderWithItems.order.id)
-                            viewModel.setActiveTab(3)
-                        },
-                        onOpenScanner = { orderId ->
-                            viewModel.openScanner(com.example.data.model.ScanStage.DELIVERY, orderId)
-                        },
-                        onReturnToCleanWarehouse = { orderId, cleanRack, reason ->
-                            viewModel.returnToCleanWarehouse(orderId, cleanRack, reason)
-                        }
-                    )
-                    1 -> CollectionRouteScreen(
-                        orders = orders,
-                        onSelectOrderForInvoice = { orderWithItems ->
-                            viewModel.selectOrder(orderWithItems.order.id)
-                            viewModel.setActiveTab(99)
-                        }
-                    )
-                    2 -> WarehouseHandoverScreen(
-                        orders = orders,
-                        onConfirmWarehouseHandover = { orderId, rackCode ->
-                            viewModel.confirmWarehouseHandover(orderId, rackCode)
-                        },
-                        onPrintWarehouseReceipt = { orderWithItems ->
-                            viewModel.printOrderReceipt("رسید تحویل و نگهداری انباردار", orderWithItems)
-                        },
-                        onOpenScanner = { targetId ->
-                            viewModel.openScanner(com.example.data.model.ScanStage.WORKSHOP, targetId)
-                        }
-                    )
-                    3 -> DeliverySettlementScreen(
-                        orders = orders,
-                        onSettlePayment = { id, paid, discount, method ->
-                            viewModel.settlePayment(id, paid, discount, method)
-                        },
-                        onPrintReceipt = { orderWithItems, method ->
-                            viewModel.printOrderReceipt("رسید تسویه حساب و تحویل فرش", orderWithItems, method)
-                        },
-                        onOpenScanner = { targetId ->
-                            viewModel.openScanner(com.example.data.model.ScanStage.DELIVERY, targetId)
-                        },
-                        onSettleWithOffice = {
-                            viewModel.settleWithOffice()
-                        },
-                        onPrintDailySettlementReport = {
-                            viewModel.printDailySettlementReport(settledOrders = orders.filter { it.order.status == "DELIVERED_SETTLED" })
-                        },
-                        onSignatureCaptured = { orderId, signatureData ->
-                            viewModel.captureCustomerSignature(orderId, signatureData)
-                        },
-                        onReturnToCleanWarehouse = { orderId, cleanRack, reason ->
-                            viewModel.returnToCleanWarehouse(orderId, cleanRack, reason)
-                        }
-                    )
-                    4 -> DispatchChatScreen(
-                        messages = chatMessages,
-                        onSendMessage = { text -> viewModel.sendChatMessage(text) }
-                    )
-                    5 -> GpsTrackingScreen(
-                        isGpsActive = isGpsActive,
-                        unsyncedCount = unsyncedCount,
-                        isSyncing = isSyncing,
-                        recentGpsLogs = recentGpsLogs,
-                        onToggleGps = { viewModel.toggleGpsTracking() },
-                        onSyncNow = { viewModel.syncWithWebPanel() }
-                    )
-                    6 -> SettingsScreen(
-                        isDarkMode = isDarkMode,
-                        onToggleDarkMode = { viewModel.toggleDarkMode() },
-                        connectedPrinterName = connectedPrinter?.name,
-                        onOpenPrinterDialog = {
-                            viewModel.scanBluetoothPrinters(context)
-                            showPrinterDialog = true
-                        },
-                        onPrintTestReceipt = { viewModel.printTestReceipt() },
-                        onSyncNow = { viewModel.syncWithWebPanel() },
-                        savedServerUrl = serverUrl,
-                        isTestingConnection = isTestingConnection,
-                        connectionTestResult = connectionTestResult,
-                        onUpdateServerUrl = { viewModel.updateServerUrl(it) },
-                        onTestConnection = { viewModel.testServerConnection(it) },
-                        tariffSyncResult = tariffsResult,
-                        onRefreshTariffs = { viewModel.refreshTariffs() },
-                        backupInfo = backupInfo,
-                        onBackupDatabase = { viewModel.backupDatabase() },
-                        onRestoreDatabase = { viewModel.restoreDatabase() },
-                        onLogout = { viewModel.logoutDriver() }
-                    )
-                    99 -> CarpetRegistrationScreen(
-                        orderWithItems = selectedOrder,
-                        isPrinting = isPrinting,
-                        tariffSyncResult = tariffsResult,
-                        onRefreshTariffs = { viewModel.refreshTariffs() },
-                        onBack = { viewModel.setActiveTab(1) },
-                        onAddCarpetItem = { type, len, wid, price, servs, defs, notes, tag ->
-                            selectedOrder?.let {
-                                viewModel.addCarpetItem(it.order.id, type, len, wid, price, servs, defs, notes, tag)
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(CleanLightBackground)
+                        .padding(paddingValues)
+                ) {
+                    when (activeTab) {
+                        0 -> DeliveryRouteScreen(
+                            orders = orders,
+                            onSelectOrderForSettlement = { orderWithItems ->
+                                viewModel.selectOrder(orderWithItems.order.id)
+                                viewModel.setActiveTab(3)
+                            },
+                            onOpenScanner = { orderId ->
+                                viewModel.openScanner(com.example.data.model.ScanStage.DELIVERY, orderId)
+                            },
+                            onReturnToCleanWarehouse = { orderId, cleanRack, reason ->
+                                viewModel.returnToCleanWarehouse(orderId, cleanRack, reason)
                             }
-                        },
-                        onDeleteCarpetItem = { itemId ->
-                            selectedOrder?.let {
-                                viewModel.deleteCarpetItem(itemId, it.order.id)
+                        )
+                        1 -> CollectionRouteScreen(
+                            orders = orders,
+                            onSelectOrderForInvoice = { orderWithItems ->
+                                viewModel.selectOrder(orderWithItems.order.id)
+                                viewModel.setActiveTab(99)
                             }
-                        },
-                        onPrintReceipt = {
-                            selectedOrder?.let {
-                                viewModel.printOrderReceipt("پیش‌فاکتور اولیه دریافت فرش", it)
+                        )
+                        2 -> WarehouseHandoverScreen(
+                            orders = orders,
+                            onConfirmWarehouseHandover = { orderId, rackCode ->
+                                viewModel.confirmWarehouseHandover(orderId, rackCode)
+                            },
+                            onPrintWarehouseReceipt = { orderWithItems ->
+                                viewModel.printOrderReceipt("رسید تحویل و نگهداری انباردار", orderWithItems)
+                            },
+                            onOpenScanner = { targetId ->
+                                viewModel.openScanner(com.example.data.model.ScanStage.WORKSHOP, targetId)
                             }
-                        },
-                        onProceedToWorkshop = {
-                            selectedOrder?.let {
-                                viewModel.finalizeInvoiceRegistration(it.order.id)
+                        )
+                        3 -> DeliverySettlementScreen(
+                            orders = orders,
+                            onSettlePayment = { id, paid, discount, method ->
+                                viewModel.settlePayment(id, paid, discount, method)
+                            },
+                            onPrintReceipt = { orderWithItems, method ->
+                                viewModel.printOrderReceipt("رسید تسویه حساب و تحویل فرش", orderWithItems, method)
+                            },
+                            onOpenScanner = { targetId ->
+                                viewModel.openScanner(com.example.data.model.ScanStage.DELIVERY, targetId)
+                            },
+                            onSettleWithOffice = {
+                                viewModel.settleWithOffice()
+                            },
+                            onPrintDailySettlementReport = {
+                                viewModel.printDailySettlementReport(settledOrders = orders.filter { it.order.status == "DELIVERED_SETTLED" })
+                            },
+                            onSignatureCaptured = { orderId, signatureData ->
+                                viewModel.captureCustomerSignature(orderId, signatureData)
+                            },
+                            onReturnToCleanWarehouse = { orderId, cleanRack, reason ->
+                                viewModel.returnToCleanWarehouse(orderId, cleanRack, reason)
                             }
-                        }
-                    )
+                        )
+                        4 -> DispatchChatScreen(
+                            messages = chatMessages,
+                            onSendMessage = { text -> viewModel.sendChatMessage(text) }
+                        )
+                        5 -> GpsTrackingScreen(
+                            isGpsActive = isGpsActive,
+                            unsyncedCount = unsyncedCount,
+                            isSyncing = isSyncing,
+                            recentGpsLogs = recentGpsLogs,
+                            onToggleGps = { viewModel.toggleGpsTracking() },
+                            onSyncNow = { viewModel.syncWithWebPanel() }
+                        )
+                        6 -> SettingsScreen(
+                            isDarkMode = isDarkMode,
+                            onToggleDarkMode = { viewModel.toggleDarkMode() },
+                            connectedPrinterName = connectedPrinter?.name,
+                            onOpenPrinterDialog = {
+                                viewModel.scanBluetoothPrinters(context)
+                                showPrinterDialog = true
+                            },
+                            onPrintTestReceipt = { viewModel.printTestReceipt() },
+                            onSyncNow = { viewModel.syncWithWebPanel() },
+                            savedServerUrl = serverUrl,
+                            isTestingConnection = isTestingConnection,
+                            connectionTestResult = connectionTestResult,
+                            onUpdateServerUrl = { viewModel.updateServerUrl(it) },
+                            onTestConnection = { viewModel.testServerConnection(it) },
+                            tariffSyncResult = tariffsResult,
+                            onRefreshTariffs = { viewModel.refreshTariffs() },
+                            backupInfo = backupInfo,
+                            onBackupDatabase = { viewModel.backupDatabase() },
+                            onRestoreDatabase = { viewModel.restoreDatabase() },
+                            onLogout = { viewModel.logoutDriver() }
+                        )
+                        99 -> CarpetRegistrationScreen(
+                            orderWithItems = selectedOrder,
+                            isPrinting = isPrinting,
+                            tariffSyncResult = tariffsResult,
+                            onRefreshTariffs = { viewModel.refreshTariffs() },
+                            onBack = { viewModel.setActiveTab(1) },
+                            onAddCarpetItem = { type, len, wid, price, servs, defs, notes, tag ->
+                                selectedOrder?.let {
+                                    viewModel.addCarpetItem(it.order.id, type, len, wid, price, servs, defs, notes, tag)
+                                }
+                            },
+                            onDeleteCarpetItem = { itemId ->
+                                selectedOrder?.let {
+                                    viewModel.deleteCarpetItem(itemId, it.order.id)
+                                }
+                            },
+                            onPrintReceipt = {
+                                selectedOrder?.let {
+                                    viewModel.printOrderReceipt("پیش‌فاکتور اولیه دریافت فرش", it)
+                                }
+                            },
+                            onProceedToWorkshop = {
+                                selectedOrder?.let {
+                                    viewModel.finalizeInvoiceRegistration(it.order.id)
+                                }
+                            }
+                        )
+                    }
                 }
             }
         }
     }
 }
-}
 
+/**
+ * Unified Custom Bottom Navigation Item matching the reference design:
+ * When active: Light green pill background (#E7F7F1), dark green icon & text (#087A5A)
+ * When inactive: Gray icon & text
+ */
+@Composable
+private fun UnifiedNavItem(
+    title: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    isSelected: Boolean,
+    badgeCount: Int = 0,
+    badgeColor: Color = CleanGreenPrimary,
+    onClick: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = if (isSelected) CleanGreenPrimaryLight else Color.Transparent,
+        modifier = Modifier
+            .clip(RoundedCornerShape(16.dp))
+            .clickable { onClick() }
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = if (isSelected) 14.dp else 10.dp, vertical = 6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Box(contentAlignment = Alignment.TopEnd) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = title,
+                    tint = if (isSelected) CleanGreenPrimary else CleanLightOnSurfaceMuted,
+                    modifier = Modifier.size(24.dp)
+                )
+                if (badgeCount > 0) {
+                    Box(
+                        modifier = Modifier
+                            .offset(x = 6.dp, y = (-4).dp)
+                            .size(16.dp)
+                            .clip(CircleShape)
+                            .background(badgeColor),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = FarsiUtils.toFarsiDigits(badgeCount.toString()),
+                            color = Color.White,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(3.dp))
+            Text(
+                text = title,
+                fontSize = 11.sp,
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                color = if (isSelected) CleanGreenPrimary else CleanLightOnSurfaceMuted
+            )
+        }
+    }
+}
