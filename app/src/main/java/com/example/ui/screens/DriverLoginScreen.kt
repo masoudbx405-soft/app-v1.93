@@ -110,25 +110,25 @@ fun DriverLoginScreen(
                         .clip(RoundedCornerShape(24.dp))
                 ) {
                     Image(
-                        painter = painterResource(id = R.drawable.yas_carpet_banner_1787715272890),
-                        contentDescription = "بنر قالیشویی هوشمند یاس",
+                        painter = painterResource(id = R.drawable.yas_electric_banner_1787716844702),
+                        contentDescription = "بنر گروه مهندسی یاس الکتریک",
                         modifier = Modifier
                             .fillMaxWidth()
                             .aspectRatio(16f / 9f),
                         contentScale = ContentScale.Crop
                     )
 
-                    // Gradient overlay with Brand Title
+                    // Multi-layer Gradient overlay for crystal-clear readability
                     Box(
                         modifier = Modifier
                             .matchParentSize()
                             .background(
                                 Brush.verticalGradient(
                                     colors = listOf(
-                                        Color.Transparent,
-                                        Color.Black.copy(alpha = 0.75f)
-                                    ),
-                                    startY = 80f
+                                        Color.Black.copy(alpha = 0.15f),
+                                        Color.Black.copy(alpha = 0.45f),
+                                        Color.Black.copy(alpha = 0.90f)
+                                    )
                                 )
                             )
                     )
@@ -140,31 +140,32 @@ fun DriverLoginScreen(
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Surface(
-                                shape = RoundedCornerShape(6.dp),
+                                shape = RoundedCornerShape(8.dp),
                                 color = CleanGreenPrimary
                             ) {
                                 Text(
-                                    text = "ناوگان",
+                                    text = "سامانه اختصاصی",
                                     color = Color.White,
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.ExtraBold,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                                 )
                             }
                             Text(
-                                text = "قالیشویی $workshopName",
+                                text = "گروه مهندسی یاس الکتریک",
                                 color = Color.White,
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.ExtraBold
                             )
                         }
+                        Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "سامانه هوشمند مدیریت ناوگان و سفیران",
-                            color = Color(0xFFE7F7F1),
-                            fontSize = 11.sp,
+                            text = "نرم‌افزار هوشمند اتوماسیون قالیشویی و ناوبری سفیران",
+                            color = Color(0xFFE2F6EE),
+                            fontSize = 11.5.sp,
                             fontWeight = FontWeight.Medium
                         )
                     }
