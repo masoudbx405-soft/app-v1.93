@@ -77,4 +77,8 @@ class SupabaseSyncService(
     suspend fun fetchTariffs(): com.example.data.model.TariffSyncResult {
         return supabaseManager.fetchTariffs()
     }
+
+    suspend fun fetchWorkshopInfo(): com.example.data.remote.supabase.WorkshopInfo? {
+        return supabaseManager.fetchWorkshopInfo()
+    }
 }

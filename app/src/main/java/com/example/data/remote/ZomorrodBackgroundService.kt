@@ -125,10 +125,11 @@ class ZomorrodBackgroundService : Service() {
 
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val serviceType = ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
                 startForeground(
                     NOTIFICATION_ID,
                     notification,
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                    serviceType
                 )
             } else {
                 startForeground(NOTIFICATION_ID, notification)
@@ -137,10 +138,11 @@ class ZomorrodBackgroundService : Service() {
             Log.e(TAG, "Error starting foreground notification", e)
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    val serviceType = ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
                     startForeground(
                         NOTIFICATION_ID,
                         notification,
-                        ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                        serviceType
                     )
                 } else {
                     startForeground(NOTIFICATION_ID, notification)

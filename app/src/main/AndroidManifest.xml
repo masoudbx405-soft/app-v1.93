@@ -46,7 +46,7 @@
 
         <service
             android:name="com.example.data.remote.ZomorrodBackgroundService"
-            android:foregroundServiceType="dataSync"
+            android:foregroundServiceType="dataSync|location"
             android:exported="false" />
     </application>
 

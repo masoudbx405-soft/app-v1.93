@@ -176,7 +176,7 @@ object PrinterManager {
             try {
                 val sb = StringBuilder()
                 sb.append("===============================\n")
-                sb.append("     *** قالیشویی صبا ***\n")
+                sb.append("     *** قالیشویی ${com.example.data.WorkshopNameHolder.current} ***\n")
                 sb.append("  گزارش تسویه حساب روزانه سفیر\n")
                 sb.append("===============================\n")
                 sb.append("نام سفیر: $driverName\n")
@@ -274,7 +274,7 @@ object PrinterManager {
         fun buildSingleCopy(copyTitle: String): String {
             val sb = StringBuilder()
             sb.append("===============================\n")
-            sb.append("     *** قالیشویی صبا ***\n")
+            sb.append("     *** قالیشویی ${com.example.data.WorkshopNameHolder.current} ***\n")
             sb.append("    $title\n")
             sb.append("     >>>> $copyTitle <<<<\n")
             sb.append("===============================\n")

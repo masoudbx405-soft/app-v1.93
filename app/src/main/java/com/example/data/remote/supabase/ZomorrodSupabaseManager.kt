@@ -1,11 +1,16 @@
 package com.example.data.remote.supabase
 
 import android.util.Log
+import com.example.data.WorkshopNameHolder
 import com.example.data.local.entities.CarpetItemEntity
 import com.example.data.local.entities.ChatMessageEntity
 import com.example.data.local.entities.DriverEntity
 import com.example.data.local.entities.DriverSettlementEntity
 import com.example.data.local.entities.OrderEntity
+import com.example.data.model.CarpetTariffItem
+import com.example.data.model.DefectTariffItem
+import com.example.data.model.ServiceTariffItem
+import com.example.data.model.TariffSyncResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -17,19 +22,11 @@ import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 /**
- * مدیر ارتباطی و همگام‌ساز واقعی با Supabase برای اپلیکیشن قالیشویی صبا.
+ * مدیر ارتباطی و همگام‌ساز واقعی با Supabase برای اپلیکیشن راننده.
  *
- * برخلاف نسخه‌ی قبلی، این کلاس دیگر مستقیم به جدول‌های Postgrest وصل
- * نمی‌شود (چون orders/drivers با RLS فقط برای کاربر لاگین‌کرده در پنل وب
- * باز هستند و اپ اندروید چنین لاگینی ندارد). به‌جایش، همه‌ی درخواست‌ها از
- * طریق Edge Function «driver-api» و «otp» (که در پروژه‌ی وب ساخته شدند و
- * با هدر x-driver-api-key احراز هویت می‌شوند) انجام می‌شود.
- *
- * چت با دیسپچر (chat/send، chat/messages) و آپلود امضای دیجیتال مشتری
- * (signature/upload) هم از طریق همین driver-api انجام می‌شود؛ پیام‌ها در
- * همان جدول chat_messages پنل وب ذخیره می‌شوند و امضا در باکت Storage
- * عمومی «signatures» آپلود و لینکش روی ستون customer_signature_url
- * سفارش ثبت می‌شود.
+ * طبق قوانین ثابت معماری:
+ * ۱. هر عملیات شبکه فقط یک endpoint واقعی و مشخص را صدا می‌زند — هیچ آدرس حدسی مجاز نیست.
+ * ۲. هیچ نام کارگاه/شرکتی هاردکد نمی‌شود و از /driver-api/workshop دریافت می‌گردد.
  */
 class ZomorrodSupabaseManager(
     private var supabaseUrl: String = ZomorrodSupabaseConfig.DEFAULT_SUPABASE_URL,
@@ -51,7 +48,7 @@ class ZomorrodSupabaseManager(
     }
 
     private fun baseRequest(url: String): Request.Builder {
-        val builder = Request.Builder()
+        return Request.Builder()
             .url(url)
             .addHeader("x-driver-api-key", driverApiKey)
             .addHeader("x-api-key", driverApiKey)
@@ -59,18 +56,13 @@ class ZomorrodSupabaseManager(
             .addHeader("Authorization", "Bearer $driverApiKey")
             .addHeader("Content-Type", "application/json")
             .addHeader("Accept", "application/json")
-        return builder
     }
 
     // ==========================================================================
     // سلامت اتصال
+    // GET /driver-api/health
     // ==========================================================================
 
-    /**
-     * تست برقراری ارتباط با Edge Function driver-api (مسیر health که
-     * صرفاً یک پاسخ ok برمی‌گرداند و به هیچ داده‌ای دسترسی ندارد، پس بدون
-     * نیاز به کلید برای پینگ ساده مناسب است)
-     */
     suspend fun checkHealth(): Pair<Boolean, String> = withContext(Dispatchers.IO) {
         val startTime = System.currentTimeMillis()
         try {
@@ -84,7 +76,7 @@ class ZomorrodSupabaseManager(
             client.newCall(request).execute().use { response ->
                 val duration = System.currentTimeMillis() - startTime
                 if (response.isSuccessful) {
-                    Pair(true, "ارتباط موفق با Supabase ($supabaseUrl) | تأخیر: ${duration}ms")
+                    Pair(true, "ارتباط موفق با سرور ($supabaseUrl) | تأخیر: ${duration}ms")
                 } else {
                     Pair(false, "پاسخ نامعتبر از سرور (HTTP ${response.code} | تأخیر: ${duration}ms)")
                 }
@@ -96,246 +88,100 @@ class ZomorrodSupabaseManager(
 
     // ==========================================================================
     // موقعیت زنده راننده (GPS)
+    // POST /driver-api/driver/location
     // ==========================================================================
 
-    /**
-     * ارسال موقعیت مکانی زنده‌ی راننده به driver-api/driver/location و پایگاه داده.
-     */
     suspend fun syncDriverStatus(driver: DriverEntity): Boolean = withContext(Dispatchers.IO) {
         try {
             val payload = JSONObject().apply {
                 put("driverId", driver.id)
-                put("driver_id", driver.id)
                 put("latitude", driver.currentLat)
-                put("lat", driver.currentLat)
                 put("longitude", driver.currentLng)
-                put("lng", driver.currentLng)
-                put("lon", driver.currentLng)
                 put("speed", driver.speed)
-                put("speed_kmh", driver.speed)
-                put("speedKmh", driver.speed)
-                put("speedMetersPerSecond", driver.speed / 3.6)
-                put("speed_mps", driver.speed / 3.6)
                 put("batteryLevel", driver.batteryLevel)
-                put("battery_level", driver.batteryLevel)
                 put("status", driver.status)
                 put("timestamp", System.currentTimeMillis())
-                put("updated_at", System.currentTimeMillis())
             }.toString()
 
-            val endpoints = listOf(
-                "${functionsBase()}/driver-api/driver/location",
-                "${functionsBase()}/driver-api/location",
-                "${functionsBase()}/driver-api/driver/${driver.id}/location",
-                "${functionsBase()}/driver-api/drivers/location",
-                "${supabaseUrl.trim().removeSuffix("/")}/rest/v1/live_locations"
-            )
+            val endpoint = "${functionsBase()}/driver-api/driver/location"
+            val request = baseRequest(endpoint)
+                .post(payload.toRequestBody(jsonMediaType))
+                .build()
 
-            for (endpoint in endpoints) {
-                try {
-                    val request = baseRequest(endpoint)
-                        .post(payload.toRequestBody(jsonMediaType))
-                        .build()
-
-                    val isSuccess = client.newCall(request).execute().use { it.isSuccessful }
-                    if (isSuccess) return@withContext true
-                } catch (e: Exception) {
-                    Log.d("SupabaseManager", "Notice: Location sync endpoint $endpoint: ${e.message}")
-                }
-            }
-            false
+            client.newCall(request).execute().use { it.isSuccessful }
         } catch (e: Exception) {
-            Log.d("SupabaseManager", "Notice: Location sync failed: ${e.message}")
+            Log.d("SupabaseManager", "Location sync failed: ${e.message}")
             false
         }
     }
 
     // ==========================================================================
-    // سفارشات
+    // اطلاعات کارگاه (نام، آدرس، موقعیت، تلفن)
+    // GET /driver-api/workshop
     // ==========================================================================
 
-    /**
-     * بسته به وضعیت فعلی سفارش، درخواست را به مسیر درست از driver-api
-     * می‌فرستد (چون بر خلاف نسخه‌ی قبلی، یک endpoint عمومی «آپدیت کلی
-     * سفارش» در سرور وجود ندارد — هر مرحله مسیر Edge Function خودش را دارد).
-     */
-    suspend fun upsertOrder(order: OrderEntity): Boolean = withContext(Dispatchers.IO) {
+    suspend fun fetchWorkshopInfo(): WorkshopInfo? = withContext(Dispatchers.IO) {
         try {
-            when (order.status) {
-                "RETURNED_TO_CLEAN_WAREHOUSE" -> pushReturnToWarehouse(order)
-                "DELIVERED_SETTLED" -> pushSettle(order)
-                else -> pushStatusUpdate(order)
+            val endpoint = "${functionsBase()}/driver-api/workshop"
+            val request = baseRequest(endpoint).get().build()
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@withContext null
+                val body = response.body?.string()?.trim() ?: return@withContext null
+                val json = JSONObject(body)
+                val name = json.optString("name").ifBlank {
+                    json.optString("workshop_name").ifBlank {
+                        json.optString("title", "")
+                    }
+                }.trim()
+                val address = json.optString("address").ifBlank { json.optString("workshop_address", "") }.trim()
+                val phone = json.optString("phone").ifBlank { json.optString("telephone", "") }.trim()
+                val lat = if (json.has("latitude")) json.optDouble("latitude") else if (json.has("lat")) json.optDouble("lat") else 35.7219
+                val lng = if (json.has("longitude")) json.optDouble("longitude") else if (json.has("lng")) json.optDouble("lng") else 51.3347
+
+                if (name.isNotBlank()) {
+                    WorkshopNameHolder.current = name
+                    WorkshopInfo(name, address, phone, lat, lng)
+                } else null
             }
         } catch (e: Exception) {
-            Log.d("SupabaseManager", "Notice: push order update: ${e.message}")
-            false
+            Log.d("SupabaseManager", "Fetch workshop info failed: ${e.message}")
+            null
         }
     }
 
-    private suspend fun pushStatusUpdate(order: OrderEntity): Boolean = withContext(Dispatchers.IO) {
-        try {
-            val payload = JSONObject().apply {
-                put("status", localStatusToDriverApiStatus(order.status))
-                put("rackCode", order.rackCode)
-                put("notes", order.notes)
-            }.toString()
+    // ==========================================================================
+    // سفارشات راننده
+    // GET /driver-api/routes/collection?driverId={id}
+    // GET /driver-api/routes/delivery?driverId={id}
+    // ==========================================================================
 
-            val endpoints = listOf(
-                "${functionsBase()}/driver-api/orders/${order.id}/status",
-                "${functionsBase()}/driver-api/orders/${order.id}"
-            )
-
-            for (endpoint in endpoints) {
-                try {
-                    val request = baseRequest(endpoint)
-                        .put(payload.toRequestBody(jsonMediaType))
-                        .build()
-                    val isSuccess = client.newCall(request).execute().use { it.isSuccessful }
-                    if (isSuccess) return@withContext true
-                } catch (_: Exception) {}
-            }
-            false
-        } catch (e: Exception) {
-            Log.d("SupabaseManager", "Notice: status update failed: ${e.message}")
-            false
-        }
-    }
-
-    private suspend fun pushReturnToWarehouse(order: OrderEntity): Boolean = withContext(Dispatchers.IO) {
-        try {
-            val payload = JSONObject().apply {
-                put("cleanRackCode", order.cleanRackCode)
-                put("returnReason", order.returnReason)
-                put("driverId", order.driverId)
-            }.toString()
-
-            val request = baseRequest("${functionsBase()}/driver-api/orders/${order.id}/return-to-warehouse")
-                .post(payload.toRequestBody(jsonMediaType))
-                .build()
-
-            client.newCall(request).execute().use { it.isSuccessful }
-        } catch (e: Exception) {
-            Log.d("SupabaseManager", "Notice: return to warehouse failed: ${e.message}")
-            false
-        }
-    }
-
-    private suspend fun pushSettle(order: OrderEntity): Boolean = withContext(Dispatchers.IO) {
-        try {
-            val payload = JSONObject().apply {
-                put("paymentType", localPaymentMethodToDriverApi(order.paymentMethod))
-                put("paidAmount", order.paidAmount)
-                put("remainingAmount", (order.finalPayable - order.paidAmount).coerceAtLeast(0L))
-                put("verifiedBarcodes", JSONArray())
-            }.toString()
-
-            val request = baseRequest("${functionsBase()}/driver-api/orders/${order.id}/settle")
-                .post(payload.toRequestBody(jsonMediaType))
-                .build()
-
-            client.newCall(request).execute().use { it.isSuccessful }
-        } catch (e: Exception) {
-            Log.d("SupabaseManager", "Notice: settle failed: ${e.message}")
-            false
-        }
-    }
-
-    /**
-     * ثبت اقلام فرش یک سفارش با POST به driver-api/orders/:id/items.
-     */
-    suspend fun upsertCarpetItems(items: List<CarpetItemEntity>): Boolean = withContext(Dispatchers.IO) {
-        if (items.isEmpty()) return@withContext true
-        try {
-            val orderId = items.first().orderId
-            val itemsArray = JSONArray()
-            items.forEach { item ->
-                val obj = JSONObject().apply {
-                    put("id", item.barcodeTag.ifBlank { "ITEM-${item.id}" })
-                    put("carpetType", item.carpetType)
-                    put("length", item.lengthMeter)
-                    put("width", item.widthMeter)
-                    put("area", item.areaSqMeter)
-                    put("unitPricePerMeter", item.unitPricePerMeter)
-                    put("totalPrice", item.totalPrice)
-                    put("services", JSONArray(item.requestedServicesJson.split("،", ",").map { it.trim() }.filter { it.isNotBlank() }))
-                    put("hasStain", item.defectsJson.isNotBlank())
-                    put("stainDetails", item.defectsJson)
-                    put("notes", item.notes)
-                    put("barcodeTag", item.barcodeTag)
-                    put("rackLocation", "")
-                }
-                itemsArray.put(obj)
-            }
-
-            val payload = JSONObject().apply {
-                put("items", itemsArray)
-                put("prepaidAmount", 0)
-            }.toString()
-
-            val request = baseRequest("${functionsBase()}/driver-api/orders/$orderId/items")
-                .post(payload.toRequestBody(jsonMediaType))
-                .build()
-
-            client.newCall(request).execute().use { it.isSuccessful }
-        } catch (e: Exception) {
-            Log.d("SupabaseManager", "Notice: upsert carpet items: ${e.message}")
-            false
-        }
-    }
-
-    /**
-     * دریافت هوشمند و مقاوم سفارشات اختصاص‌یافته به راننده از چندین مسیر احتمالی سرور و پنل وب:
-     * - driver-api/routes/collection و delivery
-     * - driver-api/orders
-     * - driver-api/routes
-     * - جدول orders در دیتابیس Supabase
-     */
     suspend fun fetchDriverOrders(driverId: String): List<SupabaseOrderDto> = withContext(Dispatchers.IO) {
         val ordersMap = mutableMapOf<String, SupabaseOrderDto>()
 
-        val endpointsToTry = listOf(
-            Pair("${functionsBase()}/driver-api/routes/collection?driverId=$driverId", "PICKUP"),
-            Pair("${functionsBase()}/driver-api/routes/delivery?driverId=$driverId", "DELIVERY"),
-            Pair("${functionsBase()}/driver-api/routes/collection?driver_id=$driverId", "PICKUP"),
-            Pair("${functionsBase()}/driver-api/routes/delivery?driver_id=$driverId", "DELIVERY"),
-            Pair("${functionsBase()}/driver-api/routes/collection", "PICKUP"),
-            Pair("${functionsBase()}/driver-api/routes/delivery", "DELIVERY"),
-            Pair("${functionsBase()}/driver-api/orders?driverId=$driverId", "PICKUP"),
-            Pair("${functionsBase()}/driver-api/orders?driver_id=$driverId", "PICKUP"),
-            Pair("${functionsBase()}/driver-api/orders", "PICKUP"),
-            Pair("${functionsBase()}/driver-api/routes", "PICKUP"),
-            Pair("${supabaseUrl.trim().removeSuffix("/")}/rest/v1/orders?order=created_at.desc&limit=100", "PICKUP")
-        )
-
-        for ((url, defaultType) in endpointsToTry) {
-            try {
-                val fetched = fetchRoute(url, defaultType, driverId)
-                for (order in fetched) {
-                    if (order.id.isNotBlank()) {
-                        // Keep or merge order
-                        val existing = ordersMap[order.id]
-                        if (existing == null) {
-                            ordersMap[order.id] = order
-                        } else {
-                            // Merge with richer data
-                            ordersMap[order.id] = existing.copy(
-                                customer_name = order.customer_name.ifBlank { existing.customer_name },
-                                customer_phone = order.customer_phone.ifBlank { existing.customer_phone },
-                                customer_address = order.customer_address.ifBlank { existing.customer_address },
-                                status = if (order.status.isNotBlank()) order.status else existing.status,
-                                stage = if (order.stage.isNotBlank()) order.stage else existing.stage,
-                                total_amount = if (order.total_amount > 0L) order.total_amount else existing.total_amount,
-                                final_payable = if (order.final_payable > 0L) order.final_payable else existing.final_payable,
-                                paid_amount = if (order.paid_amount > 0L) order.paid_amount else existing.paid_amount,
-                                payment_status = if (order.payment_status.isNotBlank()) order.payment_status else existing.payment_status,
-                                rack_code = if (order.rack_code.isNotBlank()) order.rack_code else existing.rack_code
-                            )
-                        }
-                    }
+        // 1. سفارش‌های جمع‌آوری
+        try {
+            val collectionUrl = "${functionsBase()}/driver-api/routes/collection?driverId=$driverId"
+            val collectionOrders = fetchRoute(collectionUrl, "PICKUP", driverId)
+            for (order in collectionOrders) {
+                if (order.id.isNotBlank()) {
+                    ordersMap[order.id] = order
                 }
-            } catch (e: Exception) {
-                Log.d("SupabaseManager", "Notice: endpoint $url query response: ${e.message}")
             }
+        } catch (e: Exception) {
+            Log.d("SupabaseManager", "Error fetching collection orders: ${e.message}")
+        }
+
+        // 2. سفارش‌های تحویل
+        try {
+            val deliveryUrl = "${functionsBase()}/driver-api/routes/delivery?driverId=$driverId"
+            val deliveryOrders = fetchRoute(deliveryUrl, "DELIVERY", driverId)
+            for (order in deliveryOrders) {
+                if (order.id.isNotBlank()) {
+                    ordersMap[order.id] = order
+                }
+            }
+        } catch (e: Exception) {
+            Log.d("SupabaseManager", "Error fetching delivery orders: ${e.message}")
         }
 
         ordersMap.values.toList()
@@ -382,7 +228,6 @@ class ZomorrodSupabaseManager(
                     }
                 }
 
-                // Check nested object e.g. root.data.orders
                 if (!foundAnyArray) {
                     val nestedData = root.optJSONObject("data")
                     if (nestedData != null) {
@@ -424,7 +269,7 @@ class ZomorrodSupabaseManager(
         val customerName = obj.optString("customer_name").ifBlank {
             obj.optString("customerName").ifBlank {
                 obj.optString("name").ifBlank {
-                    obj.optString("customer", "مشتری قالیشویی صبا")
+                    obj.optString("customer", "مشتری ${WorkshopNameHolder.current}")
                 }
             }
         }.trim()
@@ -540,7 +385,7 @@ class ZomorrodSupabaseManager(
         }
 
         val orderDriverName = obj.optString("driver_name").ifBlank {
-            obj.optString("driverName", "سفیر مسعود بختیاری")
+            obj.optString("driverName", "سفیر")
         }
 
         return SupabaseOrderDto(
@@ -571,7 +416,128 @@ class ZomorrodSupabaseManager(
     }
 
     // ==========================================================================
+    // آپدیت وضعیت و عملیات روی سفارش
+    // PUT /driver-api/orders/{orderId}/status
+    // POST /driver-api/orders/{orderId}/return-to-warehouse
+    // POST /driver-api/orders/{orderId}/settle
+    // POST /driver-api/orders/{orderId}/items
+    // ==========================================================================
+
+    suspend fun upsertOrder(order: OrderEntity): Boolean = withContext(Dispatchers.IO) {
+        try {
+            when (order.status) {
+                "RETURNED_TO_CLEAN_WAREHOUSE" -> pushReturnToWarehouse(order)
+                "DELIVERED_SETTLED" -> pushSettle(order)
+                else -> pushStatusUpdate(order)
+            }
+        } catch (e: Exception) {
+            Log.d("SupabaseManager", "Notice: push order update: ${e.message}")
+            false
+        }
+    }
+
+    private suspend fun pushStatusUpdate(order: OrderEntity): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val payload = JSONObject().apply {
+                put("status", localStatusToDriverApiStatus(order.status))
+                put("rackCode", order.rackCode)
+                put("notes", order.notes)
+            }.toString()
+
+            val endpoint = "${functionsBase()}/driver-api/orders/${order.id}/status"
+            val request = baseRequest(endpoint)
+                .put(payload.toRequestBody(jsonMediaType))
+                .build()
+
+            client.newCall(request).execute().use { it.isSuccessful }
+        } catch (e: Exception) {
+            Log.d("SupabaseManager", "Status update failed: ${e.message}")
+            false
+        }
+    }
+
+    private suspend fun pushReturnToWarehouse(order: OrderEntity): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val payload = JSONObject().apply {
+                put("cleanRackCode", order.cleanRackCode)
+                put("returnReason", order.returnReason)
+                put("driverId", order.driverId)
+            }.toString()
+
+            val request = baseRequest("${functionsBase()}/driver-api/orders/${order.id}/return-to-warehouse")
+                .post(payload.toRequestBody(jsonMediaType))
+                .build()
+
+            client.newCall(request).execute().use { it.isSuccessful }
+        } catch (e: Exception) {
+            Log.d("SupabaseManager", "Return to warehouse failed: ${e.message}")
+            false
+        }
+    }
+
+    private suspend fun pushSettle(order: OrderEntity): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val payload = JSONObject().apply {
+                put("paymentType", localPaymentMethodToDriverApi(order.paymentMethod))
+                put("paidAmount", order.paidAmount)
+                put("remainingAmount", (order.finalPayable - order.paidAmount).coerceAtLeast(0L))
+                put("verifiedBarcodes", JSONArray())
+            }.toString()
+
+            val request = baseRequest("${functionsBase()}/driver-api/orders/${order.id}/settle")
+                .post(payload.toRequestBody(jsonMediaType))
+                .build()
+
+            client.newCall(request).execute().use { it.isSuccessful }
+        } catch (e: Exception) {
+            Log.d("SupabaseManager", "Settle failed: ${e.message}")
+            false
+        }
+    }
+
+    suspend fun upsertCarpetItems(items: List<CarpetItemEntity>): Boolean = withContext(Dispatchers.IO) {
+        if (items.isEmpty()) return@withContext true
+        try {
+            val orderId = items.first().orderId
+            val itemsArray = JSONArray()
+            items.forEach { item ->
+                val obj = JSONObject().apply {
+                    put("id", item.barcodeTag.ifBlank { "ITEM-${item.id}" })
+                    put("carpetType", item.carpetType)
+                    put("length", item.lengthMeter)
+                    put("width", item.widthMeter)
+                    put("area", item.areaSqMeter)
+                    put("unitPricePerMeter", item.unitPricePerMeter)
+                    put("totalPrice", item.totalPrice)
+                    put("services", JSONArray(item.requestedServicesJson.split("،", ",").map { it.trim() }.filter { it.isNotBlank() }))
+                    put("hasStain", item.defectsJson.isNotBlank())
+                    put("stainDetails", item.defectsJson)
+                    put("notes", item.notes)
+                    put("barcodeTag", item.barcodeTag)
+                    put("rackLocation", "")
+                }
+                itemsArray.put(obj)
+            }
+
+            val payload = JSONObject().apply {
+                put("items", itemsArray)
+                put("prepaidAmount", 0)
+            }.toString()
+
+            val request = baseRequest("${functionsBase()}/driver-api/orders/$orderId/items")
+                .post(payload.toRequestBody(jsonMediaType))
+                .build()
+
+            client.newCall(request).execute().use { it.isSuccessful }
+        } catch (e: Exception) {
+            Log.d("SupabaseManager", "Upsert carpet items failed: ${e.message}")
+            false
+        }
+    }
+
+    // ==========================================================================
     // تسویه‌حساب پایان روز راننده با دفتر
+    // POST /driver-api/driver/office-settlement
     // ==========================================================================
 
     suspend fun upsertDriverSettlement(settlement: DriverSettlementEntity): Boolean = withContext(Dispatchers.IO) {
@@ -604,222 +570,153 @@ class ZomorrodSupabaseManager(
     }
 
     // ==========================================================================
-    // ورود راننده با کد پیامکی (OTP) — از طریق Edge Function واقعی otp
+    // ورود راننده با کد پیامکی (OTP)
+    // POST /otp/request
+    // POST /otp/verify
     // ==========================================================================
 
-    /** درخواست ارسال کد واقعی از طریق وب‌سرویس و پنل Supabase */
     suspend fun requestOtp(phone: String): Pair<Boolean, String> = withContext(Dispatchers.IO) {
-        val endpoints = listOf(
-            "${functionsBase()}/otp/request",
-            "${functionsBase()}/otp",
-            "${functionsBase()}/driver-api/otp/request",
-            "${functionsBase()}/driver-api/otp"
-        )
+        val endpoint = "${functionsBase()}/otp/request"
+        try {
+            val payload = JSONObject().apply {
+                put("phone", phone)
+            }.toString()
 
-        var lastErrorDetails = "پاسخی از سرور دریافت نشد."
+            val request = baseRequest(endpoint)
+                .post(payload.toRequestBody(jsonMediaType))
+                .build()
 
-        for (endpoint in endpoints) {
-            try {
-                val payload = JSONObject().apply {
-                    put("phone", phone)
-                    put("mobile", phone)
-                    put("action", "request")
-                    put("type", "request")
-                }.toString()
+            client.newCall(request).execute().use { response ->
+                val rawBody = response.body?.string() ?: ""
+                val json = try { JSONObject(rawBody) } catch (_: Exception) { JSONObject() }
 
-                val request = baseRequest(endpoint)
-                    .post(payload.toRequestBody(jsonMediaType))
-                    .build()
+                if (response.isSuccessful) {
+                    val isOk = json.optBoolean("success", true) &&
+                            json.optBoolean("ok", true) &&
+                            json.optString("status", "success") != "error"
 
-                client.newCall(request).execute().use { response ->
-                    val rawBody = response.body?.string() ?: ""
-                    val json = try { JSONObject(rawBody) } catch (_: Exception) { JSONObject() }
+                    val serverMsg = json.optString("message",
+                        json.optString("msg",
+                            json.optString("detail", "کد تأیید ورود با موفقیت ارسال شد.")
+                        )
+                    )
 
-                    if (response.isSuccessful) {
-                        val isOk = json.optBoolean("success", true) &&
-                                json.optBoolean("ok", true) &&
-                                json.optString("status", "success") != "error"
+                    if (isOk) {
+                        Pair(true, serverMsg)
+                    } else {
+                        val errReason = json.optString("error", json.optString("message", "خطا در درخواست کد"))
+                        Pair(false, "سرور: $errReason")
+                    }
+                } else {
+                    val extractedError = when {
+                        json.has("error") -> json.optString("error")
+                        json.has("message") -> json.optString("message")
+                        json.has("msg") -> json.optString("msg")
+                        json.has("detail") -> json.optString("detail")
+                        rawBody.isNotBlank() && rawBody.length < 200 -> rawBody
+                        else -> "پاسخ ناموفق سرور با کد ${response.code}"
+                    }
+                    Pair(false, "خطای سرور (${response.code}): $extractedError")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("SupabaseManager", "Network call failed for $endpoint: ${e.message}", e)
+            Pair(false, "خطای ارتباط شبکه: ${e.localizedMessage ?: e.javaClass.simpleName}")
+        }
+    }
 
-                        val serverMsg = json.optString("message",
-                            json.optString("msg",
-                                json.optString("detail", "کد تأیید ورود با موفقیت ارسال شد.")
+    suspend fun verifyOtp(phone: String, code: String): Pair<Boolean, String> = withContext(Dispatchers.IO) {
+        val endpoint = "${functionsBase()}/otp/verify"
+        try {
+            val payload = JSONObject().apply {
+                put("phone", phone)
+                put("code", code)
+            }.toString()
+
+            val request = baseRequest(endpoint)
+                .post(payload.toRequestBody(jsonMediaType))
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                val rawBody = response.body?.string() ?: ""
+                val json = try { JSONObject(rawBody) } catch (_: Exception) { JSONObject() }
+
+                if (response.isSuccessful) {
+                    val isOk = json.optBoolean("success", true) &&
+                            json.optBoolean("ok", true) &&
+                            json.optString("status", "success") != "error"
+
+                    if (isOk) {
+                        val driverId = json.optString("driverId",
+                            json.optString("driver_id",
+                                json.optString("id", "DRV-101")
                             )
                         )
-
-                        if (isOk) {
-                            return@withContext Pair(true, serverMsg)
-                        } else {
-                            val errReason = json.optString("error", json.optString("message", "خطا در درخواست کد"))
-                            return@withContext Pair(false, "سرور: $errReason")
-                        }
-                    } else if (response.code != 404) {
-                        // The endpoint exists on the server but rejected the request
-                        val extractedError = when {
-                            json.has("error") -> json.optString("error")
-                            json.has("message") -> json.optString("message")
-                            json.has("msg") -> json.optString("msg")
-                            json.has("detail") -> json.optString("detail")
-                            rawBody.isNotBlank() && rawBody.length < 200 -> rawBody
-                            else -> "پاسخ ناموفق سرور با کد ${response.code}"
-                        }
-                        return@withContext Pair(false, "خطای سرور (${response.code}): $extractedError")
+                        Pair(true, driverId.ifBlank { "DRV-101" })
                     } else {
-                        lastErrorDetails = "مسیر $endpoint در سرور یافت نشد (HTTP 404)"
+                        val errReason = json.optString("error", json.optString("message", "کد واردشده نادرست یا منقضی است."))
+                        Pair(false, "سرور: $errReason")
                     }
-                }
-            } catch (e: Exception) {
-                Log.e("SupabaseManager", "Network call failed for $endpoint: ${e.message}", e)
-                lastErrorDetails = "خطای ارتباط شبکه: ${e.localizedMessage ?: e.javaClass.simpleName}"
-            }
-        }
-
-        Pair(false, lastErrorDetails)
-    }
-
-    /** تایید کد پیامکی واقعی از طریق پنل و برگرداندن شناسه‌ی راننده */
-    suspend fun verifyOtp(phone: String, code: String): Pair<Boolean, String> = withContext(Dispatchers.IO) {
-        val endpoints = listOf(
-            "${functionsBase()}/otp/verify",
-            "${functionsBase()}/otp",
-            "${functionsBase()}/driver-api/otp/verify",
-            "${functionsBase()}/driver-api/otp"
-        )
-
-        var lastErrorDetails = "پاسخی از سرور دریافت نشد."
-
-        for (endpoint in endpoints) {
-            try {
-                val payload = JSONObject().apply {
-                    put("phone", phone)
-                    put("mobile", phone)
-                    put("code", code)
-                    put("otp", code)
-                    put("action", "verify")
-                    put("type", "verify")
-                }.toString()
-
-                val request = baseRequest(endpoint)
-                    .post(payload.toRequestBody(jsonMediaType))
-                    .build()
-
-                client.newCall(request).execute().use { response ->
-                    val rawBody = response.body?.string() ?: ""
-                    val json = try { JSONObject(rawBody) } catch (_: Exception) { JSONObject() }
-
-                    if (response.isSuccessful) {
-                        val isOk = json.optBoolean("success", true) &&
-                                json.optBoolean("ok", true) &&
-                                json.optString("status", "success") != "error"
-
-                        if (isOk) {
-                            val driverId = json.optString("driverId",
-                                json.optString("driver_id",
-                                    json.optString("id", "DRV-101")
-                                )
-                            )
-                            return@withContext Pair(true, driverId.ifBlank { "DRV-101" })
-                        } else {
-                            val errReason = json.optString("error", json.optString("message", "کد واردشده نادرست یا منقضی است."))
-                            return@withContext Pair(false, "سرور: $errReason")
-                        }
-                    } else if (response.code != 404) {
-                        val extractedError = when {
-                            json.has("error") -> json.optString("error")
-                            json.has("message") -> json.optString("message")
-                            json.has("msg") -> json.optString("msg")
-                            json.has("detail") -> json.optString("detail")
-                            rawBody.isNotBlank() && rawBody.length < 200 -> rawBody
-                            else -> "پاسخ ناموفق سرور با کد ${response.code}"
-                        }
-                        return@withContext Pair(false, "خطای سرور (${response.code}): $extractedError")
-                    } else {
-                        lastErrorDetails = "مسیر $endpoint در سرور یافت نشد (HTTP 404)"
+                } else {
+                    val extractedError = when {
+                        json.has("error") -> json.optString("error")
+                        json.has("message") -> json.optString("message")
+                        json.has("msg") -> json.optString("msg")
+                        json.has("detail") -> json.optString("detail")
+                        rawBody.isNotBlank() && rawBody.length < 200 -> rawBody
+                        else -> "پاسخ ناموفق سرور با کد ${response.code}"
                     }
+                    Pair(false, "خطای سرور (${response.code}): $extractedError")
                 }
-            } catch (e: Exception) {
-                Log.e("SupabaseManager", "Network call failed for verify $endpoint: ${e.message}", e)
-                lastErrorDetails = "خطای ارتباط شبکه: ${e.localizedMessage ?: e.javaClass.simpleName}"
             }
+        } catch (e: Exception) {
+            Log.e("SupabaseManager", "Network call failed for verify $endpoint: ${e.message}", e)
+            Pair(false, "خطای ارتباط شبکه: ${e.localizedMessage ?: e.javaClass.simpleName}")
         }
-
-        Pair(false, lastErrorDetails)
     }
 
     // ==========================================================================
-    // چت با دیسپچر و آپلود امضای دیجیتال
+    // چت با دیسپچر
+    // POST /driver-api/chat/send
+    // GET /driver-api/chat/messages?driverId={id}
     // ==========================================================================
 
     suspend fun sendChatMessage(message: ChatMessageEntity): Boolean = withContext(Dispatchers.IO) {
         try {
             val payload = JSONObject().apply {
                 put("driverId", message.orderId.ifBlank { "DRV-101" })
-                put("driver_id", message.orderId.ifBlank { "DRV-101" })
                 put("sender", message.sender)
-                put("role", message.sender)
                 put("senderName", message.senderName)
-                put("sender_name", message.senderName)
-                put("text", message.messageText)
                 put("message", message.messageText)
-                put("message_text", message.messageText)
-                put("content", message.messageText)
                 put("timestamp", message.timestamp)
-                put("created_at", message.timestamp)
             }.toString()
 
-            val endpoints = listOf(
-                "${functionsBase()}/driver-api/chat/send",
-                "${functionsBase()}/driver-api/chat",
-                "${functionsBase()}/driver-api/messages",
-                "${supabaseUrl.trim().removeSuffix("/")}/rest/v1/chat_messages"
-            )
+            val endpoint = "${functionsBase()}/driver-api/chat/send"
+            val request = baseRequest(endpoint)
+                .post(payload.toRequestBody(jsonMediaType))
+                .build()
 
-            for (endpoint in endpoints) {
-                try {
-                    val request = baseRequest(endpoint)
-                        .post(payload.toRequestBody(jsonMediaType))
-                        .build()
-                    val isSuccess = client.newCall(request).execute().use { it.isSuccessful }
-                    if (isSuccess) return@withContext true
-                } catch (e: Exception) {
-                    Log.d("SupabaseManager", "Notice: send chat endpoint $endpoint: ${e.message}")
-                }
-            }
-            false
+            client.newCall(request).execute().use { it.isSuccessful }
         } catch (e: Exception) {
-            Log.d("SupabaseManager", "Notice: send chat message failed: ${e.message}")
+            Log.d("SupabaseManager", "Send chat message failed: ${e.message}")
             false
         }
     }
 
     suspend fun fetchChatMessages(driverId: String): List<SupabaseChatMessageDto> = withContext(Dispatchers.IO) {
-        val endpoints = listOf(
-            "${functionsBase()}/driver-api/chat/messages?driverId=$driverId",
-            "${functionsBase()}/driver-api/chat/messages?driver_id=$driverId",
-            "${functionsBase()}/driver-api/chat/messages",
-            "${functionsBase()}/driver-api/chat?driverId=$driverId",
-            "${functionsBase()}/driver-api/chat",
-            "${functionsBase()}/driver-api/messages?driverId=$driverId",
-            "${functionsBase()}/driver-api/messages",
-            "${supabaseUrl.trim().removeSuffix("/")}/rest/v1/chat_messages?order=created_at.desc&limit=50",
-            "${supabaseUrl.trim().removeSuffix("/")}/rest/v1/messages?order=created_at.desc&limit=50"
-        )
-
-        for (endpoint in endpoints) {
-            try {
-                val request = baseRequest(endpoint).get().build()
-                val responseList = client.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) return@use null
-                    val body = response.body?.string()?.trim() ?: return@use null
-                    parseChatMessagesFromRawJson(body, driverId)
-                }
-                if (!responseList.isNullOrEmpty()) {
-                    return@withContext responseList
-                }
-            } catch (e: Exception) {
-                Log.d("SupabaseManager", "Notice: fetch chat endpoint $endpoint: ${e.message}")
+        try {
+            val endpoint = "${functionsBase()}/driver-api/chat/messages?driverId=$driverId"
+            val request = baseRequest(endpoint).get().build()
+            val responseList = client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@use null
+                val body = response.body?.string()?.trim() ?: return@use null
+                parseChatMessagesFromRawJson(body, driverId)
             }
+            responseList ?: emptyList()
+        } catch (e: Exception) {
+            Log.d("SupabaseManager", "Fetch chat messages failed: ${e.message}")
+            emptyList()
         }
-        emptyList()
     }
 
     private fun parseChatMessagesFromRawJson(body: String, driverId: String): List<SupabaseChatMessageDto> {
@@ -882,7 +779,7 @@ class ZomorrodSupabaseManager(
 
         val senderName = obj.optString("sender_name").ifBlank {
             obj.optString("senderName").ifBlank {
-                obj.optString("name", if (sender.equals("DRIVER", ignoreCase = true)) "سفیر راننده" else "دیسپچینگ مرکزی صبا")
+                obj.optString("name", if (sender.equals("DRIVER", ignoreCase = true)) "سفیر راننده" else "دیسپچینگ ${WorkshopNameHolder.current}")
             }
         }.trim()
 
@@ -909,48 +806,34 @@ class ZomorrodSupabaseManager(
     }
 
     // ==========================================================================
-    // نرخ‌نامه و تعرفه خدمات (هماهنگ با پنل وب و سرور Supabase)
+    // نرخ‌نامه و تعرفه خدمات
+    // GET /driver-api/tariffs
     // ==========================================================================
 
-    suspend fun fetchTariffs(): com.example.data.model.TariffSyncResult = withContext(Dispatchers.IO) {
-        val endpoints = listOf(
-            "${functionsBase()}/driver-api/tariffs",
-            "${functionsBase()}/driver-api/pricing",
-            "${functionsBase()}/driver-api/rates",
-            "${functionsBase()}/driver-api/services",
-            "${supabaseUrl.trim().removeSuffix("/")}/rest/v1/tariffs?select=*",
-            "${supabaseUrl.trim().removeSuffix("/")}/rest/v1/pricing?select=*",
-            "${supabaseUrl.trim().removeSuffix("/")}/rest/v1/carpet_types?select=*",
-            "${supabaseUrl.trim().removeSuffix("/")}/rest/v1/price_list?select=*",
-            "${supabaseUrl.trim().removeSuffix("/")}/rest/v1/services?select=*",
-            "${supabaseUrl.trim().removeSuffix("/")}/rest/v1/settings?select=*"
-        )
-
-        for (endpoint in endpoints) {
-            try {
-                val request = baseRequest(endpoint).get().build()
-                val result = client.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) return@use null
-                    val body = response.body?.string()?.trim() ?: return@use null
-                    parseTariffSyncResult(body, endpoint)
-                }
-                if (result != null && (result.carpetTariffs.isNotEmpty() || result.serviceTariffs.isNotEmpty())) {
-                    return@withContext result
-                }
-            } catch (e: Exception) {
-                Log.d("SupabaseManager", "Notice: tariff endpoint $endpoint: ${e.message}")
+    suspend fun fetchTariffs(): TariffSyncResult = withContext(Dispatchers.IO) {
+        try {
+            val endpoint = "${functionsBase()}/driver-api/tariffs"
+            val request = baseRequest(endpoint).get().build()
+            val result = client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@use null
+                val body = response.body?.string()?.trim() ?: return@use null
+                parseTariffSyncResult(body)
             }
+            if (result != null && (result.carpetTariffs.isNotEmpty() || result.serviceTariffs.isNotEmpty())) {
+                return@withContext result
+            }
+        } catch (e: Exception) {
+            Log.d("SupabaseManager", "Notice: tariff endpoint failed: ${e.message}")
         }
 
-        // Fallback to official default tariff
-        com.example.data.model.TariffSyncResult.createDefault()
+        TariffSyncResult.createDefault()
     }
 
-    private fun parseTariffSyncResult(body: String, sourceUrl: String): com.example.data.model.TariffSyncResult? {
+    private fun parseTariffSyncResult(body: String): TariffSyncResult? {
         try {
-            val carpets = mutableListOf<com.example.data.model.CarpetTariffItem>()
-            val services = mutableListOf<com.example.data.model.ServiceTariffItem>()
-            val defects = mutableListOf<com.example.data.model.DefectTariffItem>()
+            val carpets = mutableListOf<CarpetTariffItem>()
+            val services = mutableListOf<ServiceTariffItem>()
+            val defects = mutableListOf<DefectTariffItem>()
 
             if (body.startsWith("[")) {
                 val array = JSONArray(body)
@@ -961,7 +844,6 @@ class ZomorrodSupabaseManager(
             } else if (body.startsWith("{")) {
                 val root = JSONObject(body)
 
-                // 1. Check carpet array keys
                 val carpetArrays = listOf(
                     root.optJSONArray("carpets"),
                     root.optJSONArray("carpet_types"),
@@ -980,7 +862,6 @@ class ZomorrodSupabaseManager(
                     }
                 }
 
-                // 2. Check service array keys
                 val serviceArrays = listOf(
                     root.optJSONArray("services"),
                     root.optJSONArray("service_types"),
@@ -997,7 +878,6 @@ class ZomorrodSupabaseManager(
                     }
                 }
 
-                // 3. Check defect array keys
                 val defectArrays = listOf(
                     root.optJSONArray("defects"),
                     root.optJSONArray("flaws"),
@@ -1010,7 +890,7 @@ class ZomorrodSupabaseManager(
                             val defTitle = obj.optString("title").ifBlank { obj.optString("name") }.trim()
                             if (defTitle.isNotBlank()) {
                                 defects.add(
-                                    com.example.data.model.DefectTariffItem(
+                                    DefectTariffItem(
                                         id = obj.optString("id", "DEF-$i"),
                                         title = defTitle,
                                         description = obj.optString("description")
@@ -1022,17 +902,17 @@ class ZomorrodSupabaseManager(
                 }
             }
 
-            val finalCarpets = if (carpets.isNotEmpty()) carpets else com.example.data.model.TariffSyncResult.DEFAULT_CARPET_TARIFFS
-            val finalServices = if (services.isNotEmpty()) services else com.example.data.model.TariffSyncResult.DEFAULT_SERVICE_TARIFFS
-            val finalDefects = if (defects.isNotEmpty()) defects else com.example.data.model.TariffSyncResult.DEFAULT_DEFECT_TARIFFS
+            val finalCarpets = if (carpets.isNotEmpty()) carpets else TariffSyncResult.DEFAULT_CARPET_TARIFFS
+            val finalServices = if (services.isNotEmpty()) services else TariffSyncResult.DEFAULT_SERVICE_TARIFFS
+            val finalDefects = if (defects.isNotEmpty()) defects else TariffSyncResult.DEFAULT_DEFECT_TARIFFS
 
-            return com.example.data.model.TariffSyncResult(
+            return TariffSyncResult(
                 carpetTariffs = finalCarpets,
                 serviceTariffs = finalServices,
                 defectTariffs = finalDefects,
                 lastSyncTime = System.currentTimeMillis(),
                 isLiveFromSupabase = carpets.isNotEmpty() || services.isNotEmpty(),
-                sourceDescription = if (carpets.isNotEmpty() || services.isNotEmpty()) "همگام‌شده آنلاین با پنل وب و سرور Supabase" else "نرخ‌نامه مصوب قالیشویی صبا"
+                sourceDescription = if (carpets.isNotEmpty() || services.isNotEmpty()) "همگام‌شده آنلاین با پنل وب" else "نرخ‌نامه مصوب ${WorkshopNameHolder.current}"
             )
         } catch (e: Exception) {
             Log.d("SupabaseManager", "Notice: parse tariffs failed: ${e.message}")
@@ -1042,9 +922,9 @@ class ZomorrodSupabaseManager(
 
     private fun parseGenericTariffObject(
         obj: JSONObject,
-        carpets: MutableList<com.example.data.model.CarpetTariffItem>,
-        services: MutableList<com.example.data.model.ServiceTariffItem>,
-        defects: MutableList<com.example.data.model.DefectTariffItem>
+        carpets: MutableList<CarpetTariffItem>,
+        services: MutableList<ServiceTariffItem>,
+        defects: MutableList<DefectTariffItem>
     ) {
         val title = obj.optString("title").ifBlank {
             obj.optString("name").ifBlank {
@@ -1066,7 +946,6 @@ class ZomorrodSupabaseManager(
             return
         }
 
-        // Try parsing as carpet tariff
         val unitPrice = obj.optLong("unit_price", 0L).let { if (it > 0) it else obj.optLong("unitPrice", 0L) }
             .let { if (it > 0) it else obj.optLong("price_per_meter", 0L) }
             .let { if (it > 0) it else obj.optLong("price_per_sqm", 0L) }
@@ -1086,7 +965,7 @@ class ZomorrodSupabaseManager(
         }
 
         carpets.add(
-            com.example.data.model.CarpetTariffItem(
+            CarpetTariffItem(
                 id = obj.optString("id").ifBlank { "CT-${carpets.size + 1}" },
                 title = title,
                 category = category,
@@ -1099,7 +978,7 @@ class ZomorrodSupabaseManager(
         )
     }
 
-    private fun parseSingleServiceTariff(obj: JSONObject): com.example.data.model.ServiceTariffItem? {
+    private fun parseSingleServiceTariff(obj: JSONObject): ServiceTariffItem? {
         val title = obj.optString("title").ifBlank {
             obj.optString("name").ifBlank {
                 obj.optString("service_name").ifBlank { obj.optString("label", "") }
@@ -1115,7 +994,7 @@ class ZomorrodSupabaseManager(
         val isPercentage = obj.optBoolean("is_percentage", false) || obj.optBoolean("isPercentage", false)
         val percentage = obj.optDouble("percentage", 0.0).let { if (it > 0.0) it else obj.optDouble("percent", 0.0) }
 
-        return com.example.data.model.ServiceTariffItem(
+        return ServiceTariffItem(
             id = obj.optString("id").ifBlank { "SRV-${title.hashCode()}" },
             title = title,
             price = price,
@@ -1125,49 +1004,40 @@ class ZomorrodSupabaseManager(
         )
     }
 
+    // ==========================================================================
+    // آپلود امضای دیجیتال
+    // POST /driver-api/signature/upload
+    // ==========================================================================
+
     suspend fun uploadSignature(orderId: String, signatureBase64: String): String? = withContext(Dispatchers.IO) {
         try {
             val payload = JSONObject().apply {
                 put("orderId", orderId)
-                put("order_id", orderId)
                 put("signatureBase64", signatureBase64)
-                put("signature", signatureBase64)
             }.toString()
 
-            val endpoints = listOf(
-                "${functionsBase()}/driver-api/signature/upload",
-                "${functionsBase()}/driver-api/orders/$orderId/signature",
-                "${functionsBase()}/driver-api/signature"
-            )
+            val endpoint = "${functionsBase()}/driver-api/signature/upload"
+            val request = baseRequest(endpoint)
+                .post(payload.toRequestBody(jsonMediaType))
+                .build()
 
-            for (endpoint in endpoints) {
-                try {
-                    val request = baseRequest(endpoint)
-                        .post(payload.toRequestBody(jsonMediaType))
-                        .build()
-
-                    val url = client.newCall(request).execute().use { response ->
-                        if (!response.isSuccessful) return@use null
-                        val body = response.body?.string()?.trim() ?: return@use null
-                        if (body.startsWith("{")) {
-                            val json = JSONObject(body)
-                            if (json.optBoolean("success", true)) {
-                                json.optString("url").ifBlank {
-                                    json.optString("signatureUrl").ifBlank {
-                                        json.optString("signature_url").ifBlank { null }
-                                    }
-                                }
-                            } else null
-                        } else null
-                    }
-                    if (!url.isNullOrBlank()) return@withContext url
-                } catch (e: Exception) {
-                    Log.d("SupabaseManager", "Notice: signature endpoint $endpoint: ${e.message}")
-                }
+            val url = client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@use null
+                val body = response.body?.string()?.trim() ?: return@use null
+                if (body.startsWith("{")) {
+                    val json = JSONObject(body)
+                    if (json.optBoolean("success", true)) {
+                        json.optString("url").ifBlank {
+                            json.optString("signatureUrl").ifBlank {
+                                json.optString("signature_url").ifBlank { null }
+                            }
+                        }
+                    } else null
+                } else null
             }
-            null
+            url
         } catch (e: Exception) {
-            Log.d("SupabaseManager", "Notice: signature upload failed: ${e.message}")
+            Log.d("SupabaseManager", "Signature upload failed: ${e.message}")
             null
         }
     }

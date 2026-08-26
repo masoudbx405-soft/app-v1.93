@@ -29,7 +29,7 @@ import com.example.R
 object ZomorrodNotificationManager {
 
     const val CHANNEL_ORDERS_ID = "zomorrod_orders_channel"
-    private const val CHANNEL_ORDERS_NAME = "ماموریت‌ها و سفارشات جدید صبا"
+    private const val CHANNEL_ORDERS_NAME = "ماموریت‌ها و سفارشات جدید"
     private const val CHANNEL_ORDERS_DESC = "هشدارهای صوتی و ویبره اختصاص سفارش جدید و ماموریت‌ها"
 
     const val CHANNEL_CHAT_ID = "zomorrod_chat_channel"
@@ -37,7 +37,7 @@ object ZomorrodNotificationManager {
     private const val CHANNEL_CHAT_DESC = "اعلان‌ها و هشدارهای پیام‌های دریافتی از پنل مرکزی"
 
     const val CHANNEL_SERVICE_ID = "zomorrod_service_channel"
-    private const val CHANNEL_SERVICE_NAME = "سرویس پس‌زمینه صبا"
+    private const val CHANNEL_SERVICE_NAME = "سرویس پس‌زمینه راننده"
     private const val CHANNEL_SERVICE_DESC = "فعالیت مداوم برنامه در پس‌زمینه جهت دریافت برخط ماموریت‌ها"
 
     private var notificationIdCounter = 1000
@@ -347,7 +347,7 @@ object ZomorrodNotificationManager {
      */
     fun createServiceNotification(
         context: Context,
-        statusText: String = "سامانه صبا در پس‌زمینه فعال است | آماده دریافت سفارشات و پیام‌ها"
+        statusText: String = "سامانه در پس‌زمینه فعال است | آماده دریافت سفارشات و پیام‌ها"
     ): Notification {
         val openAppIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
@@ -374,7 +374,7 @@ object ZomorrodNotificationManager {
 
         return NotificationCompat.Builder(context, CHANNEL_SERVICE_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle("قالیشویی صبا • سرویس آنلاین پس‌زمینه")
+            .setContentTitle("${com.example.data.WorkshopNameHolder.current} • سرویس آنلاین پس‌زمینه")
             .setContentText(statusText)
             .setStyle(NotificationCompat.BigTextStyle().bigText(statusText))
             .setPriority(NotificationCompat.PRIORITY_LOW)
@@ -409,7 +409,7 @@ object ZomorrodNotificationManager {
         val builder = NotificationCompat.Builder(context, CHANNEL_ORDERS_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle("🔊 تست موفق هشدار صوتی و ویبراتور")
-            .setContentText("سیستم هشدار آنلاین قالیشویی صبا در حالت آماده‌باش قرار دارد.")
+            .setContentText("سیستم هشدار آنلاین در حالت آماده‌باش قرار دارد.")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)

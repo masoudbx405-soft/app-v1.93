@@ -2,6 +2,7 @@ package com.example.ui.viewmodel
 
 import android.app.Application
 import android.content.Context
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.local.ZomorrodDatabase
@@ -88,6 +89,28 @@ class DriverViewModel(application: Application) : AndroidViewModel(application) 
     }
     val driverApiKey: StateFlow<String> = _driverApiKey
 
+    private val _workshopName = run {
+        val saved = prefs.getString("workshop_name", "کارگاه") ?: "کارگاه"
+        com.example.data.WorkshopNameHolder.current = saved
+        MutableStateFlow(saved)
+    }
+    val workshopName: StateFlow<String> = _workshopName
+
+    fun refreshWorkshopInfo() {
+        viewModelScope.launch {
+            try {
+                val info = repository.supabaseService.fetchWorkshopInfo()
+                if (info != null && info.name.isNotBlank()) {
+                    _workshopName.value = info.name
+                    com.example.data.WorkshopNameHolder.current = info.name
+                    prefs.edit().putString("workshop_name", info.name).apply()
+                }
+            } catch (e: Exception) {
+                Log.d("DriverViewModel", "Refresh workshop info failed: ${e.message}")
+            }
+        }
+    }
+
     private val _isTestingConnection = MutableStateFlow(false)
     val isTestingConnection: StateFlow<Boolean> = _isTestingConnection
 
@@ -167,7 +190,8 @@ class DriverViewModel(application: Application) : AndroidViewModel(application) 
                 _savedDriverPhone.value = cleanPhone
                 _isLoggedIn.value = true
                 _otpSent.value = false
-                _syncToastMessage.value = "خوش آمدید! ورود موفقیت‌آمیز به سامانه قالیشویی صبا"
+                refreshWorkshopInfo()
+                _syncToastMessage.value = "خوش آمدید! ورود موفقیت‌آمیز به سامانه ${_workshopName.value}"
             } else {
                 _authError.value = resultOrError
             }
@@ -196,7 +220,7 @@ class DriverViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             val testContent = """
 ===============================
-     *** قالیشویی صبا ***
+     *** قالیشویی ${_workshopName.value} ***
     برگه تست سلامت چاپگر حرارتی
        پنل یکپارچه رانندگان
 ===============================
@@ -204,13 +228,13 @@ class DriverViewModel(application: Application) : AndroidViewModel(application) 
 سرور فعال: ${serverUrl.value}
 وضعیت پرینتر: متصل و آماده به کار (OK)
 عرض رول: ۸۰ میلی‌متر حرارتی (POS)
-سفیر فعال: مسعود بختیاری
+سفیر فعال: راننده سامانه
 -------------------------------
-✓ تست فونت فارسی: قالیشویی هوشمند صبا
+✓ تست فونت فارسی: قالیشویی هوشمند ${_workshopName.value}
 ✓ تست اعداد و مبالغ: ۱۲,۳۴۵,۰۰۰ ریال
 ✓ تست جدول و خط‌کشی فاکتور
 ===============================
-[ بارکد تست: SABA-PRINTER-OK-2026 ]
+[ بارکد تست: DRIVER-PRINTER-OK-2026 ]
 ===============================
     پایان برگه آزمایش چاپگر
             """.trimIndent()
@@ -316,6 +340,7 @@ class DriverViewModel(application: Application) : AndroidViewModel(application) 
 
     init {
         refreshBackupInfo()
+        refreshWorkshopInfo()
 
         realGpsManager.setLocationCallback { lat, lng, speedKmh ->
             viewModelScope.launch {
@@ -463,7 +488,7 @@ class DriverViewModel(application: Application) : AndroidViewModel(application) 
             _syncToastMessage.value = if (result.isLiveFromSupabase) {
                 "نرخ‌نامه با موفقیت از پنل وب همگام‌سازی شد (${result.carpetTariffs.size} تعرفه فرش)"
             } else {
-                "نرخ‌نامه مصوب قالیشویی صبا بارگذاری شد"
+                "نرخ‌نامه مصوب ${_workshopName.value} بارگذاری شد"
             }
         }
     }
@@ -635,6 +660,7 @@ class DriverViewModel(application: Application) : AndroidViewModel(application) 
     fun syncWithWebPanel() {
         viewModelScope.launch {
             _isSyncing.value = true
+            refreshWorkshopInfo()
             val currentDriverId = prefs.getString("driver_id", "DRV-101") ?: "DRV-101"
             val success = repository.syncWithWebPanel(
                 serverBaseUrl = serverUrl.value,
@@ -742,7 +768,7 @@ class DriverViewModel(application: Application) : AndroidViewModel(application) 
                 id = 0L,
                 orderId = "GENERAL",
                 sender = "DISPATCHER",
-                senderName = "دیسپچینگ مرکزی صبا",
+                senderName = "دیسپچینگ مرکزی ${_workshopName.value}",
                 messageText = selectedMsg,
                 timestamp = System.currentTimeMillis(),
                 isSynced = true
@@ -750,7 +776,7 @@ class DriverViewModel(application: Application) : AndroidViewModel(application) 
             repository.insertChatMessage(chatEntity)
             ZomorrodNotificationManager.sendNewDispatcherMessageNotification(
                 context = context,
-                senderName = "دیسپچینگ مرکزی صبا",
+                senderName = "دیسپچینگ مرکزی ${_workshopName.value}",
                 messageText = selectedMsg
             )
             _syncToastMessage.value = "پیام دیسپچر دریافت و با هشدار صوتی و ویبره اطلاع‌رسانی شد."
@@ -813,7 +839,7 @@ class DriverViewModel(application: Application) : AndroidViewModel(application) 
             val targetOrder = currentList.random().order
             val statuses = mapOf(
                 "READY_FOR_DELIVERY" to "آماده تحویل به راننده جهت توزیع",
-                "WASHING" to "در حال شستشو در کارگاه صبا",
+                "WASHING" to "در حال شستشو در کارگاه ${_workshopName.value}",
                 "DELIVERED_TO_WORKSHOP" to "تحویل شده به کارگاه مرکزی",
                 "ASSIGNED" to "اختصاص یافته به ناوگان حمل"
             )

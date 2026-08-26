@@ -287,7 +287,7 @@ class ZomorrodRepository(
             val msg = ChatMessageEntity(
                 orderId = orderId,
                 sender = sender,
-                senderName = if (sender == "DRIVER") "سفیر راننده" else "دیسپچر مرکزی (صبا)",
+                senderName = if (sender == "DRIVER") "سفیر راننده" else "دیسپچر مرکزی (${com.example.data.WorkshopNameHolder.current})",
                 messageText = messageText,
                 timestamp = System.currentTimeMillis()
             )

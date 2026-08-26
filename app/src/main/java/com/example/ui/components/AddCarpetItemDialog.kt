@@ -230,7 +230,7 @@ fun AddCarpetItemDialog(
                             Spacer(modifier = Modifier.width(6.dp))
                             Column {
                                 Text(
-                                    text = if (tariffSyncResult.isLiveFromSupabase) "نرخ‌نامه هماهنگ با پنل وب و Supabase" else "نرخ‌نامه مصوب قالیشویی صبا",
+                                    text = if (tariffSyncResult.isLiveFromSupabase) "نرخ‌نامه هماهنگ با پنل وب و Supabase" else "نرخ‌نامه مصوب ${com.example.data.WorkshopNameHolder.current}",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = if (tariffSyncResult.isLiveFromSupabase) CleanTealAccent else CleanPurpleAccent

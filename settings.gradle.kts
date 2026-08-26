@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "ZomorrodCarpetDriver"
+rootProject.name = "قالیشویی هوشمند"
 
 include(":app")

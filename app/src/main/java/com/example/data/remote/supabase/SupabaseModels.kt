@@ -1,9 +1,21 @@
 package com.example.data.remote.supabase
 
+import com.example.data.WorkshopNameHolder
 import com.example.data.local.entities.ChatMessageEntity
 import com.example.data.local.entities.DriverEntity
 import com.example.data.local.entities.DriverSettlementEntity
 import com.example.data.local.entities.OrderEntity
+
+/**
+ * مدل داده‌ای اطلاعات کارگاه و دفتر مرکزی
+ */
+data class WorkshopInfo(
+    val name: String,
+    val address: String = "",
+    val phone: String = "",
+    val lat: Double = 35.7219,
+    val lng: Double = 51.3347
+)
 
 /**
  * مدل داده‌ای سفیران / رانندگان (جدول drivers در Supabase)
@@ -215,7 +227,7 @@ fun SupabaseOrderDto.toEntity(): OrderEntity {
         orderSequence = 1,
         trackingCode = if (this.tracking_code.isNotBlank()) this.tracking_code else this.id,
         subscriptionCode = "SUB-${this.id.takeLast(4)}",
-        customerName = this.customer_name.ifBlank { "مشتری قالیشویی صبا" },
+        customerName = this.customer_name.ifBlank { "مشتری ${WorkshopNameHolder.current}" },
         customerPhone = this.customer_phone,
         address = this.customer_address.ifBlank { "تهران" },
         notes = this.notes,
@@ -296,7 +308,7 @@ fun SupabaseChatMessageDto.toEntity(): ChatMessageEntity {
         serverId = this.id.trim(),
         orderId = if (this.driver_id.isNotBlank()) this.driver_id else "GENERAL",
         sender = if (this.sender.equals("driver", ignoreCase = true) || this.sender.equals("DRIVER", ignoreCase = true)) "DRIVER" else "DISPATCHER",
-        senderName = if (this.sender_name.isNotBlank()) this.sender_name else "دیسپچینگ مرکزی صبا",
+        senderName = if (this.sender_name.isNotBlank()) this.sender_name else "دیسپچینگ ${WorkshopNameHolder.current}",
         messageText = this.text.trim(),
         timestamp = ts,
         isSynced = true

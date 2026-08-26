@@ -45,6 +45,7 @@ fun DriverLoginScreen(
     generatedOtpHint: String? = null,
     serverUrl: String = "",
     driverApiKey: String = "",
+    workshopName: String = com.example.data.WorkshopNameHolder.current,
     isTestingConnection: Boolean = false,
     connectionTestResult: String? = null,
     onTestConnection: (url: String, apiKey: String) -> Unit = { _, _ -> },
@@ -109,8 +110,8 @@ fun DriverLoginScreen(
                         .clip(RoundedCornerShape(24.dp))
                 ) {
                     Image(
-                        painter = painterResource(id = R.drawable.img_saba_auth_banner_1787262473410),
-                        contentDescription = "بنر قالیشویی صبا",
+                        painter = painterResource(id = R.drawable.yas_carpet_banner_1787715272890),
+                        contentDescription = "بنر قالیشویی هوشمند یاس",
                         modifier = Modifier
                             .fillMaxWidth()
                             .aspectRatio(16f / 9f),
@@ -146,7 +147,7 @@ fun DriverLoginScreen(
                                 color = CleanGreenPrimary
                             ) {
                                 Text(
-                                    text = "صبا",
+                                    text = "ناوگان",
                                     color = Color.White,
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.ExtraBold,
@@ -154,7 +155,7 @@ fun DriverLoginScreen(
                                 )
                             }
                             Text(
-                                text = "قالیشویی تخصصی صبا",
+                                text = "قالیشویی $workshopName",
                                 color = Color.White,
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold
@@ -298,6 +299,35 @@ fun DriverLoginScreen(
                             )
                         }
                     }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            // Engineering & Support Footer Card
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = Color.White.copy(alpha = 0.85f),
+                border = androidx.compose.foundation.BorderStroke(1.dp, CleanLightOutline),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "طراحی و پشتیبانی: گروه مهندسی یاس الکتریک",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = CleanGreenPrimary
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "📧 yas.electrical.co@gmail.com  |  📞 ۰۹۰۱۱۹۹۰۰۱۴",
+                        fontSize = 11.sp,
+                        color = CleanLightOnSurfaceMuted,
+                        fontWeight = FontWeight.Medium
+                    )
                 }
             }
         }

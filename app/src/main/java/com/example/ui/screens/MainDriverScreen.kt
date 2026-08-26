@@ -74,6 +74,7 @@ fun MainDriverScreen(viewModel: DriverViewModel) {
     val isBgServiceRunning by viewModel.isBackgroundServiceRunning.collectAsState()
     val bgLastSyncTime by viewModel.backgroundLastSyncTime.collectAsState()
     val tariffsResult by viewModel.tariffsState.collectAsState()
+    val workshopName by viewModel.workshopName.collectAsState()
 
     var showPrinterDialog by remember { mutableStateOf(false) }
     var showSyncQueueDialog by remember { mutableStateOf(false) }
@@ -185,7 +186,7 @@ fun MainDriverScreen(viewModel: DriverViewModel) {
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
                             Text("منوی دسترسی سریع سفیر", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                            Text("قالیشویی صبا • نسخه ۳.۲", fontSize = 11.sp, color = CleanLightOnSurfaceMuted)
+                            Text("قالیشویی $workshopName • نسخه ۳.۲", fontSize = 11.sp, color = CleanLightOnSurfaceMuted)
                         }
                     }
                     IconButton(onClick = { showMenuBottomSheet = false }) {
@@ -433,7 +434,7 @@ fun MainDriverScreen(viewModel: DriverViewModel) {
                                         5 -> "موقعیت مکانی GPS"
                                         6 -> "تنظیمات نرم‌افزار"
                                         99 -> "صدور پیش‌فاکتور دریافت"
-                                        else -> "قالیشویی صبا"
+                                        else -> "قالیشویی $workshopName"
                                     }
 
                                     Column {
@@ -453,7 +454,7 @@ fun MainDriverScreen(viewModel: DriverViewModel) {
                                             )
                                             Spacer(modifier = Modifier.width(5.dp))
                                             Text(
-                                                text = if (isOnline) "سفیر صبا • متصل به سرور" else "حالت آفلاین ناوگان",
+                                                text = if (isOnline) "سفیر $workshopName • متصل به سرور" else "حالت آفلاین ناوگان",
                                                 fontSize = 11.sp,
                                                 color = Color(0xFFD1FAE5),
                                                 fontWeight = FontWeight.Medium

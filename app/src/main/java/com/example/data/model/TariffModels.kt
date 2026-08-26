@@ -219,7 +219,7 @@ data class TariffSyncResult(
                 defectTariffs = DEFAULT_DEFECT_TARIFFS,
                 lastSyncTime = System.currentTimeMillis(),
                 isLiveFromSupabase = false,
-                sourceDescription = "نرخ‌نامه مصوب قالیشویی صبا (حافظه محلی)"
+                sourceDescription = "نرخ‌نامه مصوب ${com.example.data.WorkshopNameHolder.current} (حافظه محلی)"
             )
         }
     }

@@ -63,7 +63,7 @@ fun SettingsScreen(
     ) {
         // Server Connection Card
         SettingsSectionCard(
-            title = "ارتباط با سرور Supabase قالیشویی صبا",
+            title = "ارتباط با سرور متمرکز Supabase",
             subtitle = "مدیریت آدرس پروژه، کلید راننده و همگام‌سازی بی‌درنگ فاکتورها",
             icon = Icons.Default.CloudSync
         ) {
